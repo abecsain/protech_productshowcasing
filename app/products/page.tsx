@@ -232,7 +232,6 @@ export default function ProductsPage() {
       const res = await fetch(`/api/products?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        console.log('[DEBUG LOADPRODUCTS FINISHED] products count:', data.products?.length);
         setProducts(data.products || []);
         setTotal(data.total || 0);
         setCanSeePrices(Boolean(data.canSeePrices));

@@ -7,6 +7,7 @@ import { Trash2, ShoppingCart, ArrowLeft } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import QuantityStepper from '@/components/ui/QuantityStepper';
 import { useCart } from '@/components/CartContext';
+import { useSecurity } from '@/components/SecurityProvider';
 import PageContainer from '@/components/ui/PageContainer';
 import Button from '@/components/ui/Button';
 import IconButton from '@/components/ui/IconButton';
@@ -22,21 +23,13 @@ interface UserInfo {
 export default function CartPage() {
   const router = useRouter();
   const { items, updateQuantity, removeItem, clearCart, totalCount, totalPrice } = useCart();
-  const [user, setUser] = useState<UserInfo | null>(null);
+  const { userInfo: user } = useSecurity();
   const [adminWhatsapp, setAdminWhatsapp] = useState('');
 
   useEffect(() => {
-    async function loadData() {
+    async function loadSettings() {
       try {
-        const [userRes, settingsRes] = await Promise.all([
-          fetch('/api/auth/me'),
-          fetch('/api/settings'),
-        ]);
-
-        if (userRes.ok) {
-          const userData = await userRes.json();
-          setUser(userData.user);
-        }
+        const settingsRes = await fetch('/api/settings');
         if (settingsRes.ok) {
           const settingsData = await settingsRes.json();
           if (settingsData.whatsapp) {
@@ -44,10 +37,10 @@ export default function CartPage() {
           }
         }
       } catch (e) {
-        console.error('Failed to load cart user/settings', e);
+        console.error('Failed to load settings', e);
       }
     }
-    loadData();
+    loadSettings();
   }, []);
 
   const handleBuyWhatsApp = () => {

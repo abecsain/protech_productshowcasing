@@ -15,9 +15,53 @@ const passwordSchema=z.string().min(8).max(72);
 const productSchema=z.object({name:z.string().trim().min(2).max(100),description:z.string().trim().max(200),price:z.number().finite().min(0).max(100000000),categoryId:z.number().int().positive(),images:z.array(z.object({publicId:z.string().min(1),version:z.string().regex(/^\d+$/)})).min(0).max(5).default([])});
 const cloud=()=>{const {CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY,CLOUDINARY_API_SECRET}=process.env;if(!CLOUDINARY_CLOUD_NAME||!CLOUDINARY_API_KEY||!CLOUDINARY_API_SECRET)throw new Error('Image storage is not configured.');cloudinary.config({cloud_name:CLOUDINARY_CLOUD_NAME,api_key:CLOUDINARY_API_KEY,api_secret:CLOUDINARY_API_SECRET,secure:true});return cloudinary};
 const fail=(e:unknown)=>{console.error('API request failed:',e instanceof Error?e.message:'unknown');return jsonError('The request could not be completed.',500)};
+const memRateLimit = new Map<string, { count: number; resetAt: number }>();
+function allowMem(bucket: string, limit = 5, windowSec = 60) {
+  const now = Date.now();
+  const entry = memRateLimit.get(bucket);
+  if (!entry || entry.resetAt < now) {
+    memRateLimit.set(bucket, { count: 1, resetAt: now + windowSec * 1000 });
+    return true;
+  }
+  if (entry.count >= limit) return false;
+  entry.count++;
+  return true;
+}
+
+let cachedCategories: any[] | null = null;
+let cachedCategoriesTime = 0;
+function invalidateCategories() { cachedCategories = null; cachedCategoriesTime = 0; }
+
+let cachedSettings: { whatsapp: string } | null = null;
+let cachedSettingsTime = 0;
+function invalidateSettings() { cachedSettings = null; cachedSettingsTime = 0; }
+
+let cachedTotalCount: number | null = null;
+let cachedTotalCountTime = 0;
+let cachedHomeFeaturedNoPrice: any[] | null = null;
+let cachedHomeFeaturedWithPrice: any[] | null = null;
+let cachedHomeFeaturedNoPriceTime = 0;
+let cachedHomeFeaturedWithPriceTime = 0;
+let cachedFirstCatalogNoPrice: any[] | null = null;
+let cachedFirstCatalogWithPrice: any[] | null = null;
+let cachedFirstCatalogNoPriceTime = 0;
+let cachedFirstCatalogWithPriceTime = 0;
+function invalidateProducts() {
+  cachedTotalCount = null;
+  cachedTotalCountTime = 0;
+  cachedHomeFeaturedNoPrice = null;
+  cachedHomeFeaturedWithPrice = null;
+  cachedHomeFeaturedNoPriceTime = 0;
+  cachedHomeFeaturedWithPriceTime = 0;
+  cachedFirstCatalogNoPrice = null;
+  cachedFirstCatalogWithPrice = null;
+  cachedFirstCatalogNoPriceTime = 0;
+  cachedFirstCatalogWithPriceTime = 0;
+}
+
 async function bodyJson(req:Request){try{return await req.json()}catch{return null}}
 async function csrf(req:Request){return await validOrigin(req)}
-async function allow(bucket:string,limit=5,windowSec=60){await ensureSchema();const now=Math.floor(Date.now()/1000),key=crypto.createHash('sha256').update(bucket).digest('hex');const r=await db().execute({sql:`INSERT INTO rate_limits(bucket,window_start,count) VALUES(?,?,1) ON CONFLICT(bucket) DO UPDATE SET count=CASE WHEN rate_limits.window_start<=? THEN 1 ELSE rate_limits.count+1 END,window_start=CASE WHEN rate_limits.window_start<=? THEN excluded.window_start ELSE rate_limits.window_start END RETURNING count,window_start`,args:[key,now-windowSec,now-windowSec,now-windowSec]});const row=r.rows[0];return row&&Number(row.count)<=limit}
+async function allow(bucket:string,limit=5,windowSec=60){return allowMem(bucket, limit, windowSec)}
 function ip(req:Request){return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||req.headers.get('x-real-ip')||'unknown'}
 async function log(adminId:number,action:string,targetType:string,targetId:string|number|null,details:Record<string,unknown>={}){await db().execute({sql:'INSERT INTO admin_audit_log(admin_id,action,target_type,target_id,details) VALUES(?,?,?,?,?)',args:[adminId,action,targetType,targetId===null?null:String(targetId),JSON.stringify(details)]})}
 function cloudUrl(publicId:string,version:string,width=300){if(!publicId)return '/product-placeholder.svg';if(publicId.startsWith('http://')||publicId.startsWith('https://'))return publicId;if(publicId.startsWith('seed/')||publicId.startsWith('unsplash/')){const raw=publicId.split('#')[0].replace(/^(seed|unsplash)\//,'');const match=raw.match(/photo-[a-zA-Z0-9-]+/);if(match){const cleanId=match[0].replace(/-\d+$/,'');return `https://images.unsplash.com/${cleanId}?auto=format&fit=crop&w=${width}&q=80`}return '/product-placeholder.svg'}const cname=process.env.CLOUDINARY_CLOUD_NAME;if(!cname||cname==='your_cloud_name')return '/product-placeholder.svg';return `https://res.cloudinary.com/${cname}/image/upload/f_auto,q_auto,w_${width},c_limit/${version}/${publicId}`}
@@ -40,13 +84,160 @@ async function userRoute(req:Request,segments:string[]){
   if(!await csrf(req))return jsonError('Invalid request origin.',403);const p=await requireRole('user');if(!p)return jsonError('Sign in required.',401);const parsed=z.object({oldPassword:passwordSchema,newPassword:passwordSchema,confirmPassword:passwordSchema}).safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Please check your password details.');const v=parsed.data;if(v.newPassword!==v.confirmPassword||!validPassword(v.newPassword,p.mobile!))return jsonError('Choose a strong password and make sure the passwords match.');const u=await db().execute({sql:'SELECT password_hash,token_version FROM users WHERE id=?',args:[p.id]});if(!await bcrypt.compare(v.oldPassword,String(u.rows[0]!.password_hash)))return jsonError('Current password is incorrect.',403);const hash=await bcrypt.hash(v.newPassword,12);await db().execute({sql:'UPDATE users SET password_hash=?,must_change_password=0,token_version=token_version+1 WHERE id=?',args:[hash,p.id]});const out=NextResponse.json({ok:true});await setSession(out,'user',p.id,p.version+1);return out;
  }
  const p=await principal();if(!p||(p.role!=='user'&&p.role!=='admin'))return jsonError('Sign in required.',401);if(p.role==='user'&&p.mustChange&&segments[0]!=='auth')return jsonError('Password change required.',403);
- if(segments[0]==='categories'&&method==='GET'){const r=await db().execute('SELECT id,name FROM categories ORDER BY name COLLATE NOCASE');return NextResponse.json({categories:r.rows},{headers:{'Cache-Control':'private, no-store'}})}
- if(segments[0]==='products'&&segments.length===1&&method==='GET'){
-  const url=new URL(req.url),{page,limit,offset}=pagination(url.searchParams.get('page'),url.searchParams.get('limit'),24),q=(url.searchParams.get('q')||'').trim().slice(0,100),cat=Number(url.searchParams.get('category'))||null;if(q&&!await allow(`search:${ip(req)}`,60))return jsonError('Search limit reached. Try again shortly.',429);
-  const where=[] as string[],args:(string|number)[]=[];if(q){where.push('(p.name LIKE ? OR p.description LIKE ?)');args.push(`${q}%`,`%${q}%`)}if(cat){where.push('p.category_id=?');args.push(cat)}const w=where.length?`WHERE ${where.join(' AND ')}`:'';const count=await db().execute({sql:`SELECT COUNT(*) AS n FROM products p ${w}`,args});const price=p.canSeePrices?'p.price,':'';const list=await db().execute({sql:`SELECT p.id,p.name,p.description,${price} c.name AS category,c.id AS categoryId,p.created_at AS createdAt,MIN(i.public_id) AS publicId,MIN(i.version) AS imageVersion,COUNT(i.id) AS imageCount FROM products p JOIN categories c ON c.id=p.category_id LEFT JOIN product_images i ON i.product_id=p.id ${w} GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?`,args:[...args,limit,offset]});const items=list.rows.map(r=>({id:r.id,name:r.name,description:r.description,category:r.category,categoryId:r.categoryId,createdAt:r.createdAt,image:cloudUrl(String(r.publicId||''),String(r.imageVersion||'1'),300),imageCount:Number(r.imageCount),...(p.canSeePrices?{price:r.price}:{})}));return NextResponse.json({products:items,page,limit,total:Number(count.rows[0]?.n||0),canSeePrices:p.canSeePrices},{headers:{'Cache-Control':'private, no-store'}})
+ if(segments[0]==='categories'&&method==='GET'){
+  const now = Date.now();
+  if (cachedCategories && (now - cachedCategoriesTime < 60000)) {
+    return NextResponse.json({ categories: cachedCategories }, { headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' } });
+  }
+  const r = await db().execute('SELECT id,name FROM categories ORDER BY name COLLATE NOCASE');
+  cachedCategories = r.rows;
+  cachedCategoriesTime = Date.now();
+  return NextResponse.json({ categories: r.rows }, { headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' } });
  }
- if(segments[0]==='products'&&segments[1]&&method==='GET'){const id=Number(segments[1]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Product not found.',404);const price=p.canSeePrices?'p.price,':'';const r=await db().execute({sql:`SELECT p.id,p.name,p.description,${price}c.name AS category,c.id AS categoryId FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=?`,args:[id]});if(!r.rows.length)return jsonError('Product not found.',404);const imgs=await db().execute({sql:'SELECT public_id,version FROM product_images WHERE product_id=? ORDER BY sort_order',args:[id]});return NextResponse.json({product:{...r.rows[0],images:imgs.rows.map(i=>cloudUrl(String(i.public_id),String(i.version),800))}},{headers:{'Cache-Control':'private, no-store'}})}
- if(segments[0]==='settings'&&method==='GET'){const r=await db().execute({sql:'SELECT value FROM app_settings WHERE key=?',args:['whatsapp']});return NextResponse.json({whatsapp:r.rows[0]?.value||''},{headers:{'Cache-Control':'private, no-store'}})}
+ if(segments[0]==='products'&&segments.length===1&&method==='GET'){
+    const url = new URL(req.url);
+    const { page, limit, offset } = pagination(url.searchParams.get('page'), url.searchParams.get('limit'), 24);
+    const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
+    const cat = Number(url.searchParams.get('category')) || null;
+    if (q && !await allow(`search:${ip(req)}`, 60)) return jsonError('Search limit reached. Try again shortly.', 429);
+
+    const now = Date.now();
+    if (!q && !cat && page === 1) {
+      if (limit === 12) {
+        const cached = p.canSeePrices ? cachedHomeFeaturedWithPrice : cachedHomeFeaturedNoPrice;
+        const cTime = p.canSeePrices ? cachedHomeFeaturedWithPriceTime : cachedHomeFeaturedNoPriceTime;
+        if (cached && (now - cTime < 30000)) {
+          return NextResponse.json({ products: cached, page: 1, limit: 12, total: cachedTotalCount || cached.length, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=30' } });
+        }
+      }
+      if (limit === 24) {
+        const cached = p.canSeePrices ? cachedFirstCatalogWithPrice : cachedFirstCatalogNoPrice;
+        const cTime = p.canSeePrices ? cachedFirstCatalogWithPriceTime : cachedFirstCatalogNoPriceTime;
+        if (cached && (now - cTime < 30000)) {
+          return NextResponse.json({ products: cached, page: 1, limit: 24, total: cachedTotalCount || cached.length, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=30' } });
+        }
+      }
+    }
+
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (q) {
+      where.push('(p.name LIKE ? OR p.description LIKE ?)');
+      args.push(`${q}%`, `%${q}%`);
+    }
+    if (cat) {
+      where.push('p.category_id=?');
+      args.push(cat);
+    }
+    const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    let totalCountPromise: Promise<number>;
+    if (!q && !cat && cachedTotalCount !== null && (now - cachedTotalCountTime < 60000)) {
+      totalCountPromise = Promise.resolve(cachedTotalCount);
+    } else {
+      totalCountPromise = db().execute({ sql: `SELECT COUNT(*) AS n FROM products p ${w}`, args }).then(r => {
+        const cnt = Number(r.rows[0]?.n || 0);
+        if (!q && !cat) { cachedTotalCount = cnt; cachedTotalCountTime = Date.now(); }
+        return cnt;
+      });
+    }
+
+    const priceCol = p.canSeePrices ? 'p.price,' : '';
+    const prodsPromise = db().execute({
+      sql: `SELECT p.id, p.name, p.description, ${priceCol} c.name AS category, c.id AS categoryId, p.created_at AS createdAt
+            FROM products p
+            JOIN categories c ON c.id = p.category_id
+            ${w}
+            ORDER BY p.id DESC
+            LIMIT ? OFFSET ?`,
+      args: [...args, limit, offset],
+    });
+
+    const [total, prodsResult] = await Promise.all([totalCountPromise, prodsPromise]);
+    const prods = prodsResult.rows;
+
+    const imagesByProdId: Record<number, { publicId: string; version: string; count: number }> = {};
+    if (prods.length > 0) {
+      const pIds = prods.map(r => Number(r.id));
+      const placeholders = pIds.map(() => '?').join(',');
+      const imgsResult = await db().execute({
+        sql: `SELECT product_id, public_id, version, sort_order FROM product_images WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
+        args: pIds,
+      });
+
+      for (const img of imgsResult.rows) {
+        const pid = Number(img.product_id);
+        if (!imagesByProdId[pid]) {
+          imagesByProdId[pid] = {
+            publicId: String(img.public_id || ''),
+            version: String(img.version || '1'),
+            count: 1,
+          };
+        } else {
+          imagesByProdId[pid].count++;
+        }
+      }
+    }
+
+    const items = prods.map(r => {
+      const pid = Number(r.id);
+      const imgInfo = imagesByProdId[pid];
+      const item: Record<string, any> = {
+        id: pid,
+        name: r.name,
+        description: r.description,
+        category: r.category,
+        categoryId: r.categoryId,
+        createdAt: r.createdAt,
+        image: cloudUrl(imgInfo?.publicId || '', imgInfo?.version || '1', 300),
+        imageCount: imgInfo ? imgInfo.count : 0,
+      };
+      if (p.canSeePrices && typeof r.price === 'number') {
+        item.price = r.price;
+      }
+      return item;
+    });
+
+    if (!q && !cat && page === 1) {
+      if (limit === 12) {
+        if (p.canSeePrices) {
+          cachedHomeFeaturedWithPrice = items;
+          cachedHomeFeaturedWithPriceTime = Date.now();
+        } else {
+          cachedHomeFeaturedNoPrice = items;
+          cachedHomeFeaturedNoPriceTime = Date.now();
+        }
+      } else if (limit === 24) {
+        if (p.canSeePrices) {
+          cachedFirstCatalogWithPrice = items;
+          cachedFirstCatalogWithPriceTime = Date.now();
+        } else {
+          cachedFirstCatalogNoPrice = items;
+          cachedFirstCatalogNoPriceTime = Date.now();
+        }
+      }
+    }
+
+    return NextResponse.json({
+      products: items,
+      page,
+      limit,
+      total,
+      canSeePrices: p.canSeePrices,
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
+ }
+ if(segments[0]==='products'&&segments[1]&&method==='GET'){const id=Number(segments[1]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Product not found.',404);const price=p.canSeePrices?'p.price,':'';const [r,imgs]=await Promise.all([db().execute({sql:`SELECT p.id,p.name,p.description,${price}c.name AS category,c.id AS categoryId FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=?`,args:[id]}),db().execute({sql:'SELECT public_id,version FROM product_images WHERE product_id=? ORDER BY sort_order',args:[id]})]);if(!r.rows.length)return jsonError('Product not found.',404);return NextResponse.json({product:{...r.rows[0],images:imgs.rows.map(i=>cloudUrl(String(i.public_id),String(i.version),800))}},{headers:{'Cache-Control':'private, no-store'}})}
+ if(segments[0]==='settings'&&method==='GET'){
+  const now = Date.now();
+  if (cachedSettings && (now - cachedSettingsTime < 60000)) {
+    return NextResponse.json(cachedSettings, { headers: { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=120' } });
+  }
+  const r = await db().execute({ sql: 'SELECT value FROM app_settings WHERE key=?', args: ['whatsapp'] });
+  const resObj = { whatsapp: String(r.rows[0]?.value || '') };
+  cachedSettings = resObj;
+  cachedSettingsTime = Date.now();
+  return NextResponse.json(resObj, { headers: { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=120' } });
+ }
  return jsonError('Not found.',404)
 }
 
@@ -73,7 +264,55 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
   const id=Number(segments[2]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Product not found.',404);const r=await db().execute({sql:'SELECT p.id,p.name,p.description,p.price,p.category_id AS categoryId,c.name AS category,p.created_at AS createdAt FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=?',args:[id]});if(!r.rows.length)return jsonError('Product not found.',404);const images=await db().execute({sql:'SELECT public_id AS publicId,version FROM product_images WHERE product_id=? ORDER BY sort_order',args:[id]});return NextResponse.json({product:{...r.rows[0],imageAssets:images.rows.map(i=>({...i,previewUrl:cloudUrl(String(i.publicId),String(i.version),300)}))}},{headers:{'Cache-Control':'no-store'}})
  }
  if(segments[0]==='admin'&&segments[1]==='products'&&segments.length===2&&method==='GET'){
-  const url=new URL(req.url),{page,limit,offset}=pagination(url.searchParams.get('page'),url.searchParams.get('limit'),50),q=(url.searchParams.get('q')||'').trim().slice(0,100),where=q?'WHERE p.name LIKE ? OR c.name LIKE ? OR CAST(p.price AS TEXT) LIKE ?':'',args=q?[`${q}%`,`${q}%`,`${q}%`]:[];const count=await db().execute({sql:`SELECT COUNT(DISTINCT p.id) n FROM products p JOIN categories c ON c.id=p.category_id ${where}`,args});const rows=await db().execute({sql:`SELECT p.id,p.name,p.description,p.price,p.category_id AS categoryId,c.name AS category,p.created_at AS createdAt,MIN(i.public_id) AS publicId,MIN(i.version) AS imageVersion,COUNT(DISTINCT i.id) AS imageCount FROM products p JOIN categories c ON c.id=p.category_id LEFT JOIN product_images i ON i.product_id=p.id ${where} GROUP BY p.id ORDER BY p.id DESC LIMIT ? OFFSET ?`,args:[...args,limit,offset]});return NextResponse.json({products:rows.rows.map(r=>({...r,image:cloudUrl(String(r.publicId||''),String(r.imageVersion||'1'),300),imageCount:Number(r.imageCount||0)})),total:Number(count.rows[0]?.n||0),page,limit},{headers:{'Cache-Control':'no-store'}})}
+   const url=new URL(req.url),{page,limit,offset}=pagination(url.searchParams.get('page'),url.searchParams.get('limit'),50),q=(url.searchParams.get('q')||'').trim().slice(0,100),where=q?'WHERE p.name LIKE ? OR c.name LIKE ? OR CAST(p.price AS TEXT) LIKE ?':'',args=q?[`${q}%`,`${q}%`,`${q}%`]:[];
+   const countPromise = db().execute({sql:`SELECT COUNT(*) n FROM products p JOIN categories c ON c.id=p.category_id ${where}`,args});
+   const prodsPromise = db().execute({
+     sql: `SELECT p.id, p.name, p.description, p.price, p.category_id AS categoryId, c.name AS category, p.created_at AS createdAt
+           FROM products p
+           JOIN categories c ON c.id = p.category_id
+           ${where}
+           ORDER BY p.id DESC
+           LIMIT ? OFFSET ?`,
+     args: [...args, limit, offset]
+   });
+   const [count, prodsRes] = await Promise.all([countPromise, prodsPromise]);
+   const prods = prodsRes.rows;
+   const imagesByProdId: Record<number, { publicId: string; version: string; count: number }> = {};
+   if (prods.length > 0) {
+     const pIds = prods.map(r => Number(r.id));
+     const placeholders = pIds.map(() => '?').join(',');
+     const imgs = await db().execute({
+       sql: `SELECT product_id, public_id, version, sort_order FROM product_images WHERE product_id IN (${placeholders}) ORDER BY sort_order ASC`,
+       args: pIds
+     });
+     for (const img of imgs.rows) {
+       const pid = Number(img.product_id);
+       if (!imagesByProdId[pid]) {
+         imagesByProdId[pid] = {
+           publicId: String(img.public_id || ''),
+           version: String(img.version || '1'),
+           count: 1
+         };
+       } else {
+         imagesByProdId[pid].count++;
+       }
+     }
+   }
+   return NextResponse.json({
+     products: prods.map(r => {
+       const pid = Number(r.id);
+       const imgInfo = imagesByProdId[pid];
+       return {
+         ...r,
+         image: cloudUrl(imgInfo?.publicId || '', imgInfo?.version || '1', 300),
+         imageCount: imgInfo ? imgInfo.count : 0
+       };
+     }),
+     total: Number(count.rows[0]?.n || 0),
+     page,
+     limit
+   }, { headers: { 'Cache-Control': 'no-store' } });
+ }
  if(segments[0]==='admin'&&segments[1]==='categories'&&method==='GET'){const r=await db().execute('SELECT c.id,c.name,COUNT(p.id) productCount FROM categories c LEFT JOIN products p ON p.category_id=c.id GROUP BY c.id ORDER BY c.name');return NextResponse.json({categories:r.rows},{headers:{'Cache-Control':'no-store'}})}
  if(segments[0]==='admin'&&segments[1]==='categories'&&segments.length===2&&method==='POST'){
   if(!await csrf(req))return jsonError('Invalid request origin.',403);
@@ -92,6 +331,7 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
    const created=r.rows[0];
    const catObj={id:Number(created!.id),name:String(created!.name),productCount:0};
    await log(a.id,'category_created','category',catObj.id,{name:catName});
+    invalidateCategories();
    return NextResponse.json({ok:true,category:catObj},{status:201});
   }catch{
    return jsonError('Could not save category.',400);
@@ -122,6 +362,8 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
     await tx.execute({sql:'DELETE FROM categories WHERE id=?',args:[id]});
     await tx.commit();
     await log(a.id,'category_merged_and_deleted','category',id,{targetCategoryId:targetCatId,mergedCount:prodCount});
+     invalidateCategories();
+     invalidateProducts();
     return NextResponse.json({ok:true,mergedCount:prodCount});
    }catch{
     await tx.rollback();
@@ -138,6 +380,8 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
     await tx.execute({sql:'DELETE FROM categories WHERE id=?',args:[id]});
     await tx.commit();
     await log(a.id,'category_and_products_deleted','category',id,{deletedCount:prodCount});
+     invalidateCategories();
+     invalidateProducts();
     if(imgs.rows.length){
      await destroyAssets(imgs.rows.map(x=>String(x.public_id)));
     }
@@ -152,20 +396,22 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
   const r=await db().execute({sql:'DELETE FROM categories WHERE id=? RETURNING id',args:[id]});
   if(!r.rows.length)return jsonError('Category not found.',404);
   await log(a.id,'category_deleted','category',id);
+  invalidateCategories();
+  invalidateProducts();
   return NextResponse.json({ok:true});
  }
  if(segments[0]==='admin'&&segments[1]==='products'&&method==='POST'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const parsed=productSchema.safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Please check the product details.');const d=parsed.data;if(!await verifyOwnedAssets(d.images,a.id))return jsonError('One or more images could not be verified.',400);const tx=await db().transaction('write');try{const r=await tx.execute({sql:'INSERT INTO products(name,description,price,category_id) VALUES(?,?,?,?) RETURNING id',args:[d.name,d.description,d.price,d.categoryId]});const id=Number(r.rows[0]!.id);for(let i=0;i<d.images.length;i++)await tx.execute({sql:'INSERT INTO product_images(product_id,public_id,version,sort_order) VALUES(?,?,?,?)',args:[id,d.images[i]!.publicId,d.images[i]!.version,i]});for(const im of d.images)await tx.execute({sql:'UPDATE uploaded_assets SET claimed=1 WHERE public_id=? AND admin_id=?',args:[im.publicId,a.id]});await tx.commit();await log(a.id,'product_created','product',id);return NextResponse.json({id},{status:201})}catch{await tx.rollback();return jsonError('Could not save the product.',400)}
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const parsed=productSchema.safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Please check the product details.');const d=parsed.data;if(!await verifyOwnedAssets(d.images,a.id))return jsonError('One or more images could not be verified.',400);const tx=await db().transaction('write');try{const r=await tx.execute({sql:'INSERT INTO products(name,description,price,category_id) VALUES(?,?,?,?) RETURNING id',args:[d.name,d.description,d.price,d.categoryId]});const id=Number(r.rows[0]!.id);for(let i=0;i<d.images.length;i++)await tx.execute({sql:'INSERT INTO product_images(product_id,public_id,version,sort_order) VALUES(?,?,?,?)',args:[id,d.images[i]!.publicId,d.images[i]!.version,i]});for(const im of d.images)await tx.execute({sql:'UPDATE uploaded_assets SET claimed=1 WHERE public_id=? AND admin_id=?',args:[im.publicId,a.id]});await tx.commit();await log(a.id,'product_created','product',id);invalidateProducts();return NextResponse.json({id},{status:201})}catch{await tx.rollback();return jsonError('Could not save the product.',400)}
  }
  if(segments[0]==='admin'&&segments[1]==='products'&&segments[2]&&method==='PUT'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),parsed=productSchema.safeParse(await bodyJson(req));if(!Number.isSafeInteger(id)||!parsed.success)return jsonError('Please check the product details.');const d=parsed.data;if(!await verifyOwnedAssets(d.images,a.id,id))return jsonError('One or more images could not be verified.',400);const product=await db().execute({sql:'SELECT id FROM products WHERE id=?',args:[id]});if(!product.rows.length)return jsonError('Product not found.',404);const old=await db().execute({sql:'SELECT public_id FROM product_images WHERE product_id=?',args:[id]});const tx=await db().transaction('write');try{await tx.execute({sql:'UPDATE products SET name=?,description=?,price=?,category_id=? WHERE id=?',args:[d.name,d.description,d.price,d.categoryId,id]});await tx.execute({sql:'DELETE FROM product_images WHERE product_id=?',args:[id]});for(let i=0;i<d.images.length;i++){await tx.execute({sql:'INSERT INTO product_images(product_id,public_id,version,sort_order) VALUES(?,?,?,?)',args:[id,d.images[i]!.publicId,d.images[i]!.version,i]});await tx.execute({sql:'UPDATE uploaded_assets SET claimed=1 WHERE public_id=? AND admin_id=?',args:[d.images[i]!.publicId,a.id]})}await tx.commit();await log(a.id,'product_updated','product',id)}catch{await tx.rollback();return jsonError('Could not update the product.',400)}await destroyAssets(old.rows.map(r=>String(r.public_id)).filter(id=>!d.images.some(i=>i.publicId===id)));return NextResponse.json({ok:true})
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),parsed=productSchema.safeParse(await bodyJson(req));if(!Number.isSafeInteger(id)||!parsed.success)return jsonError('Please check the product details.');const d=parsed.data;if(!await verifyOwnedAssets(d.images,a.id,id))return jsonError('One or more images could not be verified.',400);const product=await db().execute({sql:'SELECT id FROM products WHERE id=?',args:[id]});if(!product.rows.length)return jsonError('Product not found.',404);const old=await db().execute({sql:'SELECT public_id FROM product_images WHERE product_id=?',args:[id]});const tx=await db().transaction('write');try{await tx.execute({sql:'UPDATE products SET name=?,description=?,price=?,category_id=? WHERE id=?',args:[d.name,d.description,d.price,d.categoryId,id]});await tx.execute({sql:'DELETE FROM product_images WHERE product_id=?',args:[id]});for(let i=0;i<d.images.length;i++){await tx.execute({sql:'INSERT INTO product_images(product_id,public_id,version,sort_order) VALUES(?,?,?,?)',args:[id,d.images[i]!.publicId,d.images[i]!.version,i]});await tx.execute({sql:'UPDATE uploaded_assets SET claimed=1 WHERE public_id=? AND admin_id=?',args:[d.images[i]!.publicId,a.id]})}await tx.commit();await log(a.id,'product_updated','product',id);invalidateProducts()}catch{await tx.rollback();return jsonError('Could not update the product.',400)}await destroyAssets(old.rows.map(r=>String(r.public_id)).filter(id=>!d.images.some(i=>i.publicId===id)));return NextResponse.json({ok:true})
  }
  if(segments[0]==='admin'&&segments[1]==='products'&&segments[2]&&method==='DELETE'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),old=await db().execute({sql:'SELECT public_id FROM product_images WHERE product_id=?',args:[id]});const r=await db().execute({sql:'DELETE FROM products WHERE id=? RETURNING id',args:[id]});if(!r.rows.length)return jsonError('Product not found.',404);await log(a.id,'product_deleted','product',id);await destroyAssets(old.rows.map(x=>String(x.public_id)));return NextResponse.json({ok:true})
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),old=await db().execute({sql:'SELECT public_id FROM product_images WHERE product_id=?',args:[id]});const r=await db().execute({sql:'DELETE FROM products WHERE id=? RETURNING id',args:[id]});if(!r.rows.length)return jsonError('Product not found.',404);await log(a.id,'product_deleted','product',id);invalidateProducts();await destroyAssets(old.rows.map(x=>String(x.public_id)));return NextResponse.json({ok:true})
  }
  if(segments[0]==='admin'&&segments[1]==='settings'&&method==='GET'){const r=await db().execute({sql:'SELECT value FROM app_settings WHERE key=?',args:['whatsapp']});return NextResponse.json({whatsapp:r.rows[0]?.value||''},{headers:{'Cache-Control':'no-store'}})}
  if(segments[0]==='admin'&&segments[1]==='settings'&&method==='PUT'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const parsed=z.object({whatsapp:z.string().regex(/^\d{10,15}$/)}).safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Enter a WhatsApp number with country code.');await db().execute({sql:'INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',args:['whatsapp',parsed.data.whatsapp]});return NextResponse.json({ok:true})
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const parsed=z.object({whatsapp:z.string().regex(/^\d{10,15}$/)}).safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Enter a WhatsApp number with country code.');await db().execute({sql:'INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',args:['whatsapp',parsed.data.whatsapp]});invalidateSettings();return NextResponse.json({ok:true})
  }
  return jsonError('Not found.',404)
 }

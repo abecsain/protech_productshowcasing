@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { Menu, X, ShoppingCart, User as UserIcon, LogOut, Key, Shield } from 'lucide-react';
 import { useCart } from './CartContext';
+import { useSecurity } from './SecurityProvider';
 import ChangePasswordModal from './ChangePasswordModal';
 import PageContainer from './ui/PageContainer';
 import IconButton from './ui/IconButton';
@@ -23,33 +24,25 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { totalCount } = useCart();
-  const [user, setUser] = useState<UserInfo | null>(null);
+  const { userInfo: user, refreshAuth } = useSecurity();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   useEffect(() => {
-    async function fetchUser() {
-      try {
-        const res = await fetch('/api/auth/me');
-        if (res.ok) {
-          const data = await res.json();
-          setUser(data.user);
-          if (data.user?.mustChange) {
-            setShowPasswordModal(true);
-          }
-        }
-      } catch (e) {
-        console.error('Failed to fetch user', e);
-      }
+    if (user?.mustChange) {
+      setShowPasswordModal(true);
     }
-    fetchUser();
-  }, []);
+  }, [user?.mustChange]);
 
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {}
+    await refreshAuth();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('auth-state-changed'));
+    }
     router.push('/auth');
     router.refresh();
   };
