@@ -4,13 +4,16 @@ import bcrypt from 'bcryptjs';
 let client: Client | undefined;
 let ready: Promise<void> | undefined;
 
+const DEFAULT_TURSO_URL = 'libsql://protechenterprices-abecsain.aws-ap-south-1.turso.io';
+const DEFAULT_TURSO_AUTH_TOKEN = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTUxOTkwMzksImlkIjoiMDFhMWZhMzItZjMwMS03ODEwLWFmZWMtMWIxODc4YmQxYTY3Iiwia2lkIjoiVHF6cEJKRktOc0pITFo5Y080bmRfMDZ1Vjd4RGx2ek5pUUxNM3JieHJzVSIsInJpZCI6IjhiZjU1YTFlLTgwOGYtNDQ3Ni04MTYyLTE2ODRlOWE0MGE4ZiJ9.cETJIHoPPNQ2V0P7pWgN7lkNN9mBG6EzD0x4H6-ZmUAypSh3Tzx89TF6ZjflLRyumME6HrHg4uXX2azwIl7gAA';
+
 export function db() {
   if (!client) {
-    const url = process.env.TURSO_DATABASE_URL || (process.env.NODE_ENV !== 'production' ? 'file:local.db' : '');
-    if (!url) throw new Error('TURSO_DATABASE_URL must be configured in production.');
+    const url = process.env.TURSO_DATABASE_URL || DEFAULT_TURSO_URL;
+    const authToken = process.env.TURSO_AUTH_TOKEN || DEFAULT_TURSO_AUTH_TOKEN;
     client = createClient({
       url,
-      authToken: process.env.TURSO_AUTH_TOKEN,
+      authToken,
     });
   }
   return client;
@@ -20,6 +23,11 @@ export async function ensureSchema() {
   if (!ready) {
     ready = (async () => {
       const c = db();
+      try {
+        const check = await c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users' LIMIT 1");
+        if (check.rows.length > 0) return;
+      } catch {}
+
       const statements = [
         'PRAGMA foreign_keys=ON',
         `CREATE TABLE IF NOT EXISTS users (

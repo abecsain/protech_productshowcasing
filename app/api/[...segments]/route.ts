@@ -9,7 +9,7 @@ import { pagination, validPassword, cloudinaryProductId, lockoutState, canReques
 
 export const runtime='nodejs';
 type Ctx={params:Promise<{segments:string[]}>};
-const mobileSchema=z.string().regex(/^\d{10}$/);
+const mobileSchema=z.string().transform((val)=>{let d=val.replace(/\D/g,'');if(d.length===12&&d.startsWith('91'))d=d.slice(2);if(d.length===11&&d.startsWith('0'))d=d.slice(1);return d;}).pipe(z.string().regex(/^\d{10}$/));
 const nameSchema=z.string().trim().min(2).max(80);
 const passwordSchema=z.string().min(8).max(72);
 const productSchema=z.object({name:z.string().trim().min(2).max(100),description:z.string().trim().max(200),price:z.number().finite().min(0).max(100000000),categoryId:z.number().int().positive(),images:z.array(z.object({publicId:z.string().min(1),version:z.string().regex(/^\d+$/)})).min(0).max(5).default([])});

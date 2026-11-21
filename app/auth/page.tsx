@@ -39,7 +39,9 @@ export default function AuthPage() {
     e.preventDefault();
     setError('');
 
-    const cleanMobile = mobile.replace(/\D/g, '');
+    let cleanMobile = mobile.replace(/\D/g, '');
+    if (cleanMobile.length === 12 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(2);
+    if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(1);
     if (cleanMobile.length !== 10) {
       setError('Please enter a valid 10-digit mobile number');
       return;
@@ -74,7 +76,9 @@ export default function AuthPage() {
     e.preventDefault();
     setError('');
 
-    const cleanMobile = mobile.replace(/\D/g, '');
+    let cleanMobile = mobile.replace(/\D/g, '');
+    if (cleanMobile.length === 12 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(2);
+    if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(1);
     if (!name.trim()) {
       setError('Please enter your full name');
       return;
