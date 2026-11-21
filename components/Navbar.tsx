@@ -4,12 +4,14 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { Menu, X, ShoppingCart, User as UserIcon, LogOut, Key, Shield } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useCart } from './CartContext';
 import { useSecurity } from './SecurityProvider';
-import ChangePasswordModal from './ChangePasswordModal';
 import PageContainer from './ui/PageContainer';
 import IconButton from './ui/IconButton';
 import Button from './ui/Button';
+
+const ChangePasswordModal = dynamic(() => import('./ChangePasswordModal'), { ssr: false });
 
 interface UserInfo {
   id: number;

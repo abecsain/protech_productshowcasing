@@ -4,7 +4,8 @@ import bcrypt from 'bcryptjs';
 import { v2 as cloudinary } from 'cloudinary';
 import crypto from 'node:crypto';
 import { db, ensureSchema } from '@/lib/db';
-import { clearSession, jsonError, principal, requireRole, setSession, validOrigin } from '@/lib/security';
+import { clearSession, jsonError, principal, requireRole, setSession, validOrigin, invalidatePrincipalCache } from '@/lib/security';
+import { revalidateCatalog } from '@/lib/catalog';
 import { pagination, validPassword, cloudinaryProductId, lockoutState, canRequestUpload } from '@/lib/policy.mjs';
 
 export const runtime='nodejs';
@@ -30,7 +31,8 @@ function allowMem(bucket: string, limit = 5, windowSec = 60) {
 
 let cachedCategories: any[] | null = null;
 let cachedCategoriesTime = 0;
-function invalidateCategories() { cachedCategories = null; cachedCategoriesTime = 0; }
+function invalidateCategories() {
+  revalidateCatalog(); cachedCategories = null; cachedCategoriesTime = 0; }
 
 let cachedSettings: { whatsapp: string } | null = null;
 let cachedSettingsTime = 0;
@@ -47,6 +49,7 @@ let cachedFirstCatalogWithPrice: any[] | null = null;
 let cachedFirstCatalogNoPriceTime = 0;
 let cachedFirstCatalogWithPriceTime = 0;
 function invalidateProducts() {
+  revalidateCatalog();
   cachedTotalCount = null;
   cachedTotalCountTime = 0;
   cachedHomeFeaturedNoPrice = null;
@@ -94,7 +97,17 @@ async function userRoute(req:Request,segments:string[]){
   cachedCategoriesTime = Date.now();
   return NextResponse.json({ categories: r.rows }, { headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' } });
  }
- if(segments[0]==='products'&&segments.length===1&&method==='GET'){
+   if(segments[0]==='prices'&&method==='GET'){
+    if(!p.canSeePrices)return NextResponse.json({prices:{}},{headers:{'Cache-Control':'private, no-store'}});
+    const url=new URL(req.url),rawIds=(url.searchParams.get('ids')||'').split(','),ids=rawIds.map(Number).filter(n=>Number.isSafeInteger(n)&&n>0).slice(0,50);
+    if(!ids.length)return NextResponse.json({prices:{}},{headers:{'Cache-Control':'private, no-store'}});
+    const placeholders=ids.map(()=>'?').join(',');
+    const r=await db().execute({sql:`SELECT id,price FROM products WHERE id IN (${placeholders})`,args:ids});
+    const priceMap: Record<number, number> = {};
+    for(const row of r.rows){priceMap[Number(row.id)]=Number(row.price);}
+    return NextResponse.json({prices:priceMap},{headers:{'Cache-Control':'private, no-store'}});
+  }
+  if(segments[0]==='products'&&segments.length===1&&method==='GET'){
     const url = new URL(req.url);
     const { page, limit, offset } = pagination(url.searchParams.get('page'), url.searchParams.get('limit'), 24);
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
@@ -252,13 +265,13 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
  if(segments[0]==='admin'&&segments[1]==='dashboard'&&method==='GET'){const [p,u]=await Promise.all([db().execute('SELECT COUNT(*) n FROM products'),db().execute('SELECT COUNT(*) n FROM users')]);return NextResponse.json({products:Number(p.rows[0]?.n),users:Number(u.rows[0]?.n)},{headers:{'Cache-Control':'no-store'}})}
  if(segments[0]==='admin'&&segments[1]==='users'&&segments.length===2&&method==='GET'){const url=new URL(req.url),{page,limit,offset}=pagination(url.searchParams.get('page'),url.searchParams.get('limit'),50),q=(url.searchParams.get('q')||'').trim().slice(0,80);if(q&&!await allow(`admin-search:${ip(req)}`,60))return jsonError('Search limit reached.',429);const term=q?`WHERE name LIKE ? OR mobile LIKE ?`:'';const args=q?[`${q}%`,`${q}%`]:[];const count=await db().execute({sql:`SELECT COUNT(*) n FROM users ${term}`,args});const users=await db().execute({sql:`SELECT id,name,mobile,created_at AS createdAt,price_visible AS priceVisible,price_expires_at AS expiresAt FROM users ${term} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`,args:[...args,limit,offset]});return NextResponse.json({users:users.rows.map(u=>({...u,priceVisible:Boolean(u.priceVisible&&(!u.expiresAt||Date.parse(String(u.expiresAt))>Date.now())),remainingMs:u.expiresAt?Math.max(0,Date.parse(String(u.expiresAt))-Date.now()):null})),total:Number(count.rows[0]?.n||0),page,limit},{headers:{'Cache-Control':'no-store'}})}
  if(segments[0]==='admin'&&segments[1]==='users'&&segments[2]&&segments[3]==='price'&&method==='PUT'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),parsed=z.object({enabled:z.boolean(),hours:z.number().min(0.01).max(24*365).nullable()}).safeParse(await bodyJson(req));if(!Number.isSafeInteger(id)||!parsed.success)return jsonError('Invalid price setting.');const expiry=parsed.data.enabled&&parsed.data.hours?new Date(Date.now()+parsed.data.hours*3600000).toISOString():null;const r=await db().execute({sql:'UPDATE users SET price_visible=?,price_expires_at=? WHERE id=? RETURNING id',args:[parsed.data.enabled?1:0,expiry,id]});if(!r.rows.length)return jsonError('User not found.',404);await log(a.id,'price_access_changed','user',id,{enabled:parsed.data.enabled,expiry});return NextResponse.json({ok:true})
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),parsed=z.object({enabled:z.boolean(),hours:z.number().min(0.01).max(24*365).nullable()}).safeParse(await bodyJson(req));if(!Number.isSafeInteger(id)||!parsed.success)return jsonError('Invalid price setting.');const expiry=parsed.data.enabled&&parsed.data.hours?new Date(Date.now()+parsed.data.hours*3600000).toISOString():null;const r=await db().execute({sql:'UPDATE users SET price_visible=?,price_expires_at=? WHERE id=? RETURNING id',args:[parsed.data.enabled?1:0,expiry,id]});if(!r.rows.length)return jsonError('User not found.',404);await log(a.id,'price_access_changed','user',id,{enabled:parsed.data.enabled,expiry});invalidatePrincipalCache();return NextResponse.json({ok:true})
  }
  if(segments[0]==='admin'&&segments[1]==='users'&&segments[2]&&segments[3]==='reset-password'&&method==='POST'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]);if(!Number.isSafeInteger(id))return jsonError('Invalid user.');const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';const temp=Array.from(crypto.randomBytes(16),b=>alphabet[b%alphabet.length]).join('');const hash=await bcrypt.hash(temp,12);const r=await db().execute({sql:'UPDATE users SET password_hash=?,must_change_password=1,token_version=token_version+1,failed_attempts=0,locked_until=NULL WHERE id=? RETURNING id',args:[hash,id]});if(!r.rows.length)return jsonError('User not found.',404);await log(a.id,'password_reset','user',id);return NextResponse.json({temporaryPassword:temp},{headers:{'Cache-Control':'no-store'}})
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]);if(!Number.isSafeInteger(id))return jsonError('Invalid user.');const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';const temp=Array.from(crypto.randomBytes(16),b=>alphabet[b%alphabet.length]).join('');const hash=await bcrypt.hash(temp,12);const r=await db().execute({sql:'UPDATE users SET password_hash=?,must_change_password=1,token_version=token_version+1,failed_attempts=0,locked_until=NULL WHERE id=? RETURNING id',args:[hash,id]});if(!r.rows.length)return jsonError('User not found.',404);await log(a.id,'password_reset','user',id);invalidatePrincipalCache();return NextResponse.json({temporaryPassword:temp},{headers:{'Cache-Control':'no-store'}})
  }
  if(segments[0]==='admin'&&segments[1]==='users'&&segments[2]&&segments.length===3&&method==='DELETE'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Invalid user ID.');const userRow=await db().execute({sql:'SELECT id,name,mobile FROM users WHERE id=?',args:[id]});if(!userRow.rows.length)return jsonError('User not found.',404);const u=userRow.rows[0];const r=await db().execute({sql:'DELETE FROM users WHERE id=? RETURNING id',args:[id]});if(!r.rows.length)return jsonError('User not found.',404);await log(a.id,'user_deleted','user',id,{name:u?.name,mobile:u?.mobile});return NextResponse.json({ok:true,deletedUser:{id,name:u?.name,mobile:u?.mobile}},{headers:{'Cache-Control':'no-store'}});
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Invalid user ID.');const userRow=await db().execute({sql:'SELECT id,name,mobile FROM users WHERE id=?',args:[id]});if(!userRow.rows.length)return jsonError('User not found.',404);const u=userRow.rows[0];const r=await db().execute({sql:'DELETE FROM users WHERE id=? RETURNING id',args:[id]});if(!r.rows.length)return jsonError('User not found.',404);await log(a.id,'user_deleted','user',id,{name:u?.name,mobile:u?.mobile});invalidatePrincipalCache();return NextResponse.json({ok:true,deletedUser:{id,name:u?.name,mobile:u?.mobile}},{headers:{'Cache-Control':'no-store'}});
  }
  if(segments[0]==='admin'&&segments[1]==='products'&&segments[2]&&method==='GET'){
   const id=Number(segments[2]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Product not found.',404);const r=await db().execute({sql:'SELECT p.id,p.name,p.description,p.price,p.category_id AS categoryId,c.name AS category,p.created_at AS createdAt FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=?',args:[id]});if(!r.rows.length)return jsonError('Product not found.',404);const images=await db().execute({sql:'SELECT public_id AS publicId,version FROM product_images WHERE product_id=? ORDER BY sort_order',args:[id]});return NextResponse.json({product:{...r.rows[0],imageAssets:images.rows.map(i=>({...i,previewUrl:cloudUrl(String(i.publicId),String(i.version),300)}))}},{headers:{'Cache-Control':'no-store'}})

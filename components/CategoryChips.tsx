@@ -8,6 +8,7 @@ import Input from './ui/Input';
 export interface Category {
   id: number;
   name: string;
+  productCount?: number;
 }
 
 interface CategoryChipsProps {

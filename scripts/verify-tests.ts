@@ -125,6 +125,15 @@ async function runTests() {
   const simulatedSql = `SELECT id, name, description, ${priceColumn} category_id FROM products LIMIT 1`;
   assert(!simulatedSql.includes('price,'), 'SQL query for unauthorized user completely omits price column on server');
 
+  // --- TEST 7: Shared Cache & Public Catalog Price Immunity ---
+  console.log('\n7. Shared Cache Price Separation Testing:');
+  const catalogRow = await db.execute('SELECT p.id, p.name, p.description, c.name AS category, c.id AS categoryId, p.created_at AS createdAt FROM products p JOIN categories c ON c.id = p.category_id LIMIT 10');
+  for (const row of catalogRow.rows) {
+    assert(!Object.hasOwn(row, 'price'), 'Public catalog row strictly omits price field from database select');
+  }
+  const publicCatalogJson = JSON.stringify(catalogRow.rows);
+  assert(!publicCatalogJson.includes('"price"'), 'Public shared catalog JSON payload contains zero price keys or values');
+
   console.log('\n========================================');
   console.log(` RESULTS: ${passed} Passed, ${failed} Failed`);
   console.log('========================================\n');

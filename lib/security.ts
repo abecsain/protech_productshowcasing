@@ -23,6 +23,7 @@ export async function issueSession(role: 'user' | 'admin', id: number, version: 
 }
 
 export async function setSession(response: NextResponse, role: 'user' | 'admin', id: number, version: number) {
+  invalidatePrincipalCache();
   response.cookies.set(COOKIE, await issueSession(role, id, version), {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -33,6 +34,7 @@ export async function setSession(response: NextResponse, role: 'user' | 'admin',
 }
 
 export async function clearSession(response: NextResponse) {
+  invalidatePrincipalCache();
   response.cookies.set(COOKIE, '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -52,12 +54,24 @@ export type Principal = {
   canSeePrices?: boolean;
 };
 
+const principalCache = new Map<string, { p: Principal | null; expires: number }>();
+export function invalidatePrincipalCache(token?: string) {
+  if (token) principalCache.delete(token);
+  else principalCache.clear();
+}
+
 export const principal = cache(async (): Promise<Principal | null> => {
   try {
-    await ensureSchema();
     const c = await cookies();
     const token = c.get(COOKIE)?.value;
     if (!token) return null;
+
+    const now = Date.now();
+    const cached = principalCache.get(token);
+    if (cached && cached.expires > now) {
+      return cached.p;
+    }
+
     const { payload } = await jwtVerify(token, jwtKey());
     const id = Number(payload.sub);
     const role = payload.role;
@@ -71,10 +85,13 @@ export const principal = cache(async (): Promise<Principal | null> => {
       args: [id],
     });
     const u = row.rows[0];
-    if (!u || Number(u.token_version) !== version) return null;
+    if (!u || Number(u.token_version) !== version) {
+      principalCache.set(token, { p: null, expires: now + 5000 });
+      return null;
+    }
 
     const canSeePrices = role === 'admin' ? true : priceVisible(Boolean(u.price_visible), u.price_expires_at ? String(u.price_expires_at) : null);
-    return {
+    const pResult: Principal = {
       role,
       id,
       name: String(u.name),
@@ -83,6 +100,8 @@ export const principal = cache(async (): Promise<Principal | null> => {
       ...(u.mobile ? { mobile: String(u.mobile) } : {}),
       ...(role === 'user' ? { mustChange: Boolean(u.must_change_password) } : {}),
     };
+    principalCache.set(token, { p: pResult, expires: now + 5000 });
+    return pResult;
   } catch {
     return null;
   }

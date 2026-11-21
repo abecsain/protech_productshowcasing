@@ -7,25 +7,34 @@ let ready: Promise<void> | undefined;
 const DEFAULT_TURSO_URL = 'libsql://protechenterprices-abecsain.aws-ap-south-1.turso.io';
 const DEFAULT_TURSO_AUTH_TOKEN = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTUxOTkwMzksImlkIjoiMDFhMWZhMzItZjMwMS03ODEwLWFmZWMtMWIxODc4YmQxYTY3Iiwia2lkIjoiVHF6cEJKRktOc0pITFo5Y080bmRfMDZ1Vjd4RGx2ek5pUUxNM3JieHJzVSIsInJpZCI6IjhiZjU1YTFlLTgwOGYtNDQ3Ni04MTYyLTE2ODRlOWE0MGE4ZiJ9.cETJIHoPPNQ2V0P7pWgN7lkNN9mBG6EzD0x4H6-ZmUAypSh3Tzx89TF6ZjflLRyumME6HrHg4uXX2azwIl7gAA';
 
-export function db() {
-  if (!client) {
+const globalForDb = globalThis as unknown as {
+  __turso_client?: Client;
+  __turso_schema_ready?: boolean;
+};
+
+export function db(): Client {
+  if (!globalForDb.__turso_client) {
     const url = process.env.TURSO_DATABASE_URL || DEFAULT_TURSO_URL;
     const authToken = process.env.TURSO_AUTH_TOKEN || DEFAULT_TURSO_AUTH_TOKEN;
-    client = createClient({
+    globalForDb.__turso_client = createClient({
       url,
       authToken,
     });
   }
-  return client;
+  return globalForDb.__turso_client;
 }
 
 export async function ensureSchema() {
+  if (globalForDb.__turso_schema_ready) return;
   if (!ready) {
     ready = (async () => {
       const c = db();
       try {
         const check = await c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users' LIMIT 1");
-        if (check.rows.length > 0) return;
+        if (check.rows.length > 0) {
+          globalForDb.__turso_schema_ready = true;
+          return;
+        }
       } catch {}
 
       const statements = [
@@ -175,6 +184,7 @@ export async function ensureSchema() {
           args: [username, await bcrypt.hash(initialPassword, 12)],
         });
       }
+      globalForDb.__turso_schema_ready = true;
     })();
   }
   return ready;

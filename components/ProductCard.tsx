@@ -2,12 +2,14 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { Plus } from 'lucide-react';
 import QuantityStepper from './ui/QuantityStepper';
 import Button from './ui/Button';
 import { useCart } from './CartContext';
-import ProductModal from './ProductModal';
 import { useToast } from './ui/Toast';
+
+const ProductModal = dynamic(() => import('./ProductModal'), { ssr: false });
 
 export interface ProductItem {
   id: number;
@@ -24,12 +26,14 @@ interface ProductCardProps {
   product: ProductItem;
   canSeePrices: boolean;
   compact?: boolean;
+  priority?: boolean;
 }
 
-export default function ProductCard({
+function ProductCard({
   product,
   canSeePrices,
   compact = false,
+  priority = false,
 }: ProductCardProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const handleCloseModal = React.useCallback(() => setModalOpen(false), []);
@@ -85,7 +89,8 @@ export default function ProductCard({
                 fill
                 sizes="(max-width: 640px) 33vw, 180px"
                 className="object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
+                priority={priority}
+                loading={priority ? undefined : 'lazy'}
               />
             ) : (
               <span className="text-[10px] font-bold text-slate-300">PTE</span>
@@ -177,7 +182,8 @@ export default function ProductCard({
               fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
               className="object-cover group-hover:scale-105 transition-transform duration-200"
-              loading="lazy"
+              priority={priority}
+              loading={priority ? undefined : 'lazy'}
             />
           ) : (
             <span className="text-slate-400 text-xs">No image</span>
@@ -257,3 +263,5 @@ export default function ProductCard({
     </>
   );
 }
+
+export default React.memo(ProductCard);
