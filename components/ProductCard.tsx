@@ -55,13 +55,11 @@ function ProductCard({
       },
       1
     );
-    showToast(`Added 1 × ${product.name} to cart`, 'success');
   };
 
   const handleUpdateCartQty = (newQty: number) => {
     if (newQty <= 0) {
       removeItem(product.id);
-      showToast(`Removed ${product.name} from cart`, 'info');
     } else {
       updateQuantity(product.id, newQty);
     }

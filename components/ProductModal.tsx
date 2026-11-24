@@ -94,7 +94,6 @@ export default function ProductModal({
       },
       quantity
     );
-    showToast(`Added ${quantity} × ${name} to cart`, 'success');
     onClose();
   };
 
@@ -186,7 +185,6 @@ export default function ProductModal({
                   onChange={(newQty) => {
                     if (newQty <= 0) {
                       removeItem(productId);
-                      showToast(`Removed ${name} from cart`, 'info');
                     } else {
                       updateQuantity(productId, newQty);
                     }

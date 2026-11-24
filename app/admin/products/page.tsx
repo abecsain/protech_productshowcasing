@@ -567,7 +567,6 @@ export default function AdminProductsPage() {
           },
         ]);
       }
-      showToast('Image uploaded successfully', 'success');
     } catch (err) {
       console.error('Image upload failed', err);
       setFormError(err instanceof Error ? err.message : 'Image upload failed. Ensure Cloud Name is configured.');
@@ -641,10 +640,9 @@ export default function AdminProductsPage() {
         const d = await res.json();
         setFormError(d.error || 'Failed to save product');
       } else {
-        showToast(
-          editingProduct ? 'Product updated successfully' : 'Product created successfully',
-          'success'
-        );
+        if (editingProduct) {
+          showToast('Product updated successfully', 'success');
+        }
         setShowProductModal(false);
         loadProducts();
         loadCategories();
