@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Trash2, ShoppingCart, ArrowLeft } from 'lucide-react';
+import { Trash2, ShoppingCart, ArrowLeft, Building2, MapPin, Smartphone, User } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import QuantityStepper from '@/components/ui/QuantityStepper';
@@ -14,10 +14,14 @@ import Button from '@/components/ui/Button';
 import IconButton from '@/components/ui/IconButton';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
+import Modal from '@/components/ui/Modal';
+import Input from '@/components/ui/Input';
 
 interface UserInfo {
   name: string;
+  firmName?: string;
   mobile: string;
+  address?: string;
   canSeePrices: boolean;
 }
 
@@ -25,9 +29,29 @@ export default function CartPage() {
   const router = useRouter();
   const { items, updateQuantity, removeItem, clearCart, totalCount, totalPrice } = useCart();
   const { userInfo: user } = useSecurity();
-  const [adminWhatsapp, setAdminWhatsapp] = useState('');
+  const [adminWhatsapp, setAdminWhatsapp] = useState('918319613801');
+
+  // Guest details modal state for unauthenticated ordering
+  const [isGuestModalOpen, setIsGuestModalOpen] = useState(false);
+  const [guestName, setGuestName] = useState('');
+  const [guestFirmName, setGuestFirmName] = useState('');
+  const [guestMobile, setGuestMobile] = useState('');
+  const [guestAddress, setGuestAddress] = useState('');
+  const [guestErrors, setGuestErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    // Load previously entered guest info if any
+    try {
+      const saved = localStorage.getItem('pte_guest_info');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.name) setGuestName(parsed.name);
+        if (parsed.firmName) setGuestFirmName(parsed.firmName);
+        if (parsed.mobile) setGuestMobile(parsed.mobile);
+        if (parsed.address) setGuestAddress(parsed.address);
+      }
+    } catch {}
+
     async function loadSettings() {
       try {
         const settingsRes = await fetch('/api/settings');
@@ -44,24 +68,25 @@ export default function CartPage() {
     loadSettings();
   }, []);
 
-  const handleBuyWhatsApp = () => {
+  const sendWhatsAppOrder = (customer: {
+    name: string;
+    firmName: string;
+    mobile: string;
+    address: string;
+    canSeePrices: boolean;
+  }) => {
     if (items.length === 0) return;
 
-    const customerName = user?.name || 'Customer';
-    const customerFirm = user?.firmName || '';
-    const customerMobile = user?.mobile || '';
-    const customerAddress = user?.address || '';
-    const canSeePrices = Boolean(user?.canSeePrices);
-
+    const targetWa = adminWhatsapp || '918319613801';
     let message = '';
 
-    if (canSeePrices && typeof totalPrice === 'number') {
+    if (customer.canSeePrices && typeof totalPrice === 'number') {
       message += `🛒 *PROTECH ENTERPRISES - PURCHASE ORDER*\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `👤 *Customer:* ${customerName}\n`;
-      if (customerFirm) message += `🏢 *Firm Name:* ${customerFirm}\n`;
-      if (customerMobile) message += `📱 *Mobile:* ${customerMobile}\n`;
-      if (customerAddress) message += `📍 *Delivery Address:* ${customerAddress}\n`;
+      message += `👤 *Customer:* ${customer.name}\n`;
+      if (customer.firmName) message += `🏢 *Firm Name:* ${customer.firmName}\n`;
+      if (customer.mobile) message += `📱 *Mobile:* +91 ${customer.mobile}\n`;
+      if (customer.address) message += `📍 *Delivery Address:* ${customer.address}\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
       message += `📦 *ORDER ITEMS:*\n\n`;
 
@@ -79,26 +104,92 @@ export default function CartPage() {
       message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
       message += `Please confirm our purchase order and provide dispatch details. Thank you!`;
     } else {
-      message += `🛒 *PROTECH ENTERPRISES - ORDER INQUIRY*\n`;
+      message += `🛒 *PROTECH ENTERPRISES - PURCHASE ORDER*\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `👤 *Customer:* ${customerName}\n`;
-      if (customerFirm) message += `🏢 *Firm Name:* ${customerFirm}\n`;
-      if (customerMobile) message += `📱 *Mobile:* ${customerMobile}\n`;
-      if (customerAddress) message += `📍 *Delivery Address:* ${customerAddress}\n`;
+      message += `👤 *Customer:* ${customer.name}\n`;
+      if (customer.firmName) message += `🏢 *Firm Name:* ${customer.firmName}\n`;
+      if (customer.mobile) message += `📱 *Mobile:* +91 ${customer.mobile}\n`;
+      if (customer.address) message += `📍 *Delivery Address:* ${customer.address}\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `📦 *REQUESTED ITEMS:*\n\n`;
+      message += `📦 *REQUESTED ORDER ITEMS:*\n\n`;
 
       items.forEach((item, index) => {
         message += `${index + 1}. *${item.name}* (Qty: ${item.quantity})\n`;
       });
 
       message += `\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `Please share wholesale price quote and stock availability. Thank you!`;
+      message += `Please confirm availability and share the best wholesale price quotation for this order. Thank you!`;
     }
 
     const encoded = encodeURIComponent(message);
-    const waUrl = `https://wa.me/${adminWhatsapp}?text=${encoded}`;
+    const waUrl = `https://wa.me/${targetWa}?text=${encoded}`;
     window.open(waUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleBuyClick = () => {
+    if (items.length === 0) return;
+
+    if (user && user.mobile) {
+      // User is logged in: directly dispatch with their registered info
+      sendWhatsAppOrder({
+        name: user.name || 'Valued Customer',
+        firmName: user.firmName || '',
+        mobile: user.mobile || '',
+        address: user.address || '',
+        canSeePrices: Boolean(user.canSeePrices),
+      });
+    } else {
+      // User is not logged in / unregistered: prompt for firm name, mobile, address
+      setIsGuestModalOpen(true);
+    }
+  };
+
+  const handleGuestSubmit = () => {
+    const errors: Record<string, string> = {};
+    const trimmedName = guestName.trim();
+    const trimmedFirm = guestFirmName.trim();
+    const cleanMobile = guestMobile.replace(/\D/g, '');
+    const trimmedAddress = guestAddress.trim();
+
+    if (!trimmedName) {
+      errors.name = 'Customer name is required';
+    }
+    if (!trimmedFirm) {
+      errors.firmName = 'Firm / Business name is required';
+    }
+    if (!cleanMobile || cleanMobile.length !== 10 || !/^[6-9]\d{9}$/.test(cleanMobile)) {
+      errors.mobile = 'Enter a valid 10-digit Indian mobile number';
+    }
+    if (!trimmedAddress) {
+      errors.address = 'Delivery address is required';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setGuestErrors(errors);
+      return;
+    }
+
+    try {
+      localStorage.setItem(
+        'pte_guest_info',
+        JSON.stringify({
+          name: trimmedName,
+          firmName: trimmedFirm,
+          mobile: cleanMobile,
+          address: trimmedAddress,
+        })
+      );
+    } catch {}
+
+    setIsGuestModalOpen(false);
+
+    sendWhatsAppOrder({
+      name: trimmedName,
+      firmName: trimmedFirm,
+      mobile: cleanMobile,
+      address: trimmedAddress,
+      canSeePrices: false,
+    });
   };
 
   return (
@@ -258,8 +349,8 @@ export default function CartPage() {
                       variant="primary"
                       size="lg"
                       fullWidth
-                      onClick={handleBuyWhatsApp}
-                      disabled={!adminWhatsapp}
+                      onClick={handleBuyClick}
+                      disabled={items.length === 0}
                     >
                       Buy on WhatsApp
                     </Button>
@@ -297,8 +388,8 @@ export default function CartPage() {
                 variant="primary"
                 size="md"
                 fullWidth
-                onClick={handleBuyWhatsApp}
-                disabled={!adminWhatsapp}
+                onClick={handleBuyClick}
+                disabled={items.length === 0}
                 className="font-bold py-2.5 shadow-sm"
               >
                 Buy on WhatsApp
@@ -307,6 +398,99 @@ export default function CartPage() {
           </div>
         </div>
       )}
+
+      {/* Guest Customer Details Modal before WhatsApp Dispatch */}
+      <Modal
+        isOpen={isGuestModalOpen}
+        onClose={() => setIsGuestModalOpen(false)}
+        title="Enter Details to Order"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Please provide your name, business firm, and contact details. This will be included with your order items on WhatsApp for swift fulfillment.
+          </p>
+
+          <div className="space-y-3">
+            <Input
+              label="Customer Name"
+              required
+              value={guestName}
+              onChange={(e) => {
+                setGuestName(e.target.value);
+                if (guestErrors.name) setGuestErrors((prev) => ({ ...prev, name: '' }));
+              }}
+              placeholder="Enter your full name"
+              icon={<User size={16} />}
+              error={guestErrors.name}
+            />
+
+            <Input
+              label="Firm / Business Name"
+              required
+              value={guestFirmName}
+              onChange={(e) => {
+                setGuestFirmName(e.target.value);
+                if (guestErrors.firmName) setGuestErrors((prev) => ({ ...prev, firmName: '' }));
+              }}
+              placeholder="Enter your shop or company name"
+              icon={<Building2 size={16} />}
+              error={guestErrors.firmName}
+            />
+
+            <Input
+              label="Mobile Number"
+              required
+              type="tel"
+              prefixText="+91"
+              value={guestMobile}
+              onChange={(e) => {
+                const clean = e.target.value.replace(/\D/g, '').slice(0, 10);
+                setGuestMobile(clean);
+                if (guestErrors.mobile) setGuestErrors((prev) => ({ ...prev, mobile: '' }));
+              }}
+              placeholder="9876543210"
+              error={guestErrors.mobile}
+              maxLength={10}
+            />
+
+            <Input
+              label="Delivery Address"
+              required
+              multiline
+              rows={2}
+              value={guestAddress}
+              onChange={(e) => {
+                setGuestAddress(e.target.value);
+                if (guestErrors.address) setGuestErrors((prev) => ({ ...prev, address: '' }));
+              }}
+              placeholder="Shop/Office address, City, State, PIN"
+              icon={<MapPin size={16} />}
+              error={guestErrors.address}
+            />
+          </div>
+
+          <div className="pt-2 flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="md"
+              fullWidth
+              onClick={() => setIsGuestModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              fullWidth
+              onClick={handleGuestSubmit}
+              className="font-bold bg-[#1D4ED8]"
+            >
+              Send on WhatsApp
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

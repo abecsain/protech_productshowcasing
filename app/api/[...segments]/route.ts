@@ -86,6 +86,17 @@ async function userRoute(req:Request,segments:string[]){
  if(segments.join('/')==='auth/password'&&method==='PUT'){
   if(!await csrf(req))return jsonError('Invalid request origin.',403);const p=await requireRole('user');if(!p)return jsonError('Sign in required.',401);const parsed=z.object({oldPassword:passwordSchema,newPassword:passwordSchema,confirmPassword:passwordSchema}).safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Please check your password details.');const v=parsed.data;if(v.newPassword!==v.confirmPassword||!validPassword(v.newPassword,p.mobile!))return jsonError('Choose a strong password and make sure the passwords match.');const u=await db().execute({sql:'SELECT password_hash,token_version FROM users WHERE id=?',args:[p.id]});if(!await bcrypt.compare(v.oldPassword,String(u.rows[0]!.password_hash)))return jsonError('Current password is incorrect.',403);const hash=await bcrypt.hash(v.newPassword,12);await db().execute({sql:'UPDATE users SET password_hash=?,must_change_password=0,token_version=token_version+1 WHERE id=?',args:[hash,p.id]});const out=NextResponse.json({ok:true});await setSession(out,'user',p.id,p.version+1);return out;
  }
+ if(segments[0]==='settings'&&method==='GET'){
+  const now = Date.now();
+  if (cachedSettings && (now - cachedSettingsTime < 60000)) {
+    return NextResponse.json(cachedSettings, { headers: { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=120' } });
+  }
+  const r = await db().execute({ sql: 'SELECT value FROM app_settings WHERE key=?', args: ['whatsapp'] });
+  const resObj = { whatsapp: String(r.rows[0]?.value || process.env.ADMIN_WHATSAPP_NUMBER || '918319613801') };
+  cachedSettings = resObj;
+  cachedSettingsTime = Date.now();
+  return NextResponse.json(resObj, { headers: { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=120' } });
+ }
  const p=await principal();if(!p||(p.role!=='user'&&p.role!=='admin'))return jsonError('Sign in required.',401);if(p.role==='user'&&p.mustChange&&segments[0]!=='auth')return jsonError('Password change required.',403);
  if(segments[0]==='categories'&&method==='GET'){
   const now = Date.now();
@@ -240,17 +251,6 @@ async function userRoute(req:Request,segments:string[]){
     }, { headers: { 'Cache-Control': 'private, no-store' } });
  }
  if(segments[0]==='products'&&segments[1]&&method==='GET'){const id=Number(segments[1]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Product not found.',404);const price=p.canSeePrices?'p.price,':'';const [r,imgs]=await Promise.all([db().execute({sql:`SELECT p.id,p.name,p.description,${price}c.name AS category,c.id AS categoryId FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=?`,args:[id]}),db().execute({sql:'SELECT public_id,version FROM product_images WHERE product_id=? ORDER BY sort_order',args:[id]})]);if(!r.rows.length)return jsonError('Product not found.',404);return NextResponse.json({product:{...r.rows[0],images:imgs.rows.map(i=>cloudUrl(String(i.public_id),String(i.version),800))}},{headers:{'Cache-Control':'private, no-store'}})}
- if(segments[0]==='settings'&&method==='GET'){
-  const now = Date.now();
-  if (cachedSettings && (now - cachedSettingsTime < 60000)) {
-    return NextResponse.json(cachedSettings, { headers: { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=120' } });
-  }
-  const r = await db().execute({ sql: 'SELECT value FROM app_settings WHERE key=?', args: ['whatsapp'] });
-  const resObj = { whatsapp: String(r.rows[0]?.value || '') };
-  cachedSettings = resObj;
-  cachedSettingsTime = Date.now();
-  return NextResponse.json(resObj, { headers: { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=120' } });
- }
  return jsonError('Not found.',404)
 }
 
