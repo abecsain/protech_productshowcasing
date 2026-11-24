@@ -45,21 +45,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Customer routes protection (/home, /products, /cart) - Accessible to logged-in users and admins
-  const isProtectedUserRoute = pathname.startsWith('/home') || pathname.startsWith('/products') || pathname.startsWith('/cart');
-  if (isProtectedUserRoute) {
-    if (!session || (session.role !== 'user' && session.role !== 'admin')) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/auth';
-      return NextResponse.redirect(url);
-    }
-    return NextResponse.next();
-  }
-
   // Already logged-in user or admin going to /auth
   if (pathname === '/auth' && session) {
     const url = request.nextUrl.clone();
-    url.pathname = session.role === 'admin' ? '/admin' : '/home';
+    url.pathname = session.role === 'admin' ? '/admin' : '/products';
     return NextResponse.redirect(url);
   }
 
@@ -68,9 +57,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/home/:path*',
-    '/products/:path*',
-    '/cart/:path*',
     '/admin/:path*',
     '/auth',
   ],

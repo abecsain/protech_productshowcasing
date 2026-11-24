@@ -47,30 +47,53 @@ export default function CartPage() {
     if (items.length === 0) return;
 
     const customerName = user?.name || 'Customer';
+    const customerFirm = user?.firmName || '';
     const customerMobile = user?.mobile || '';
+    const customerAddress = user?.address || '';
     const canSeePrices = Boolean(user?.canSeePrices);
 
-    let message = `Hello Pro Tech Enterprises,\n\nI would like to place an order:\n`;
-    message += `Customer: ${customerName}\n`;
-    if (customerMobile) {
-      message += `Mobile: ${customerMobile}\n`;
-    }
-    message += `\nOrder Items:\n`;
-
-    items.forEach((item, index) => {
-      if (canSeePrices && typeof item.price === 'number') {
-        const itemTotal = item.price * item.quantity;
-        message += `${index + 1}. ${item.name} - Qty: ${item.quantity} (₹${item.price.toLocaleString('en-IN')} each = ₹${itemTotal.toLocaleString('en-IN')})\n`;
-      } else {
-        message += `${index + 1}. ${item.name} - Qty: ${item.quantity}\n`;
-      }
-    });
+    let message = '';
 
     if (canSeePrices && typeof totalPrice === 'number') {
-      message += `\nEstimated Total: ₹${totalPrice.toLocaleString('en-IN')}\n`;
-    }
+      message += `🛒 *PRO TECH ENTERPRISES - PURCHASE ORDER*\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `👤 *Customer:* ${customerName}\n`;
+      if (customerFirm) message += `🏢 *Firm Name:* ${customerFirm}\n`;
+      if (customerMobile) message += `📱 *Mobile:* ${customerMobile}\n`;
+      if (customerAddress) message += `📍 *Delivery Address:* ${customerAddress}\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `📦 *ORDER ITEMS:*\n\n`;
 
-    message += `\nPlease confirm availability and share details. Thank you!`;
+      items.forEach((item, index) => {
+        const unitPrice = typeof item.price === 'number' ? item.price : 0;
+        const itemTotal = unitPrice * item.quantity;
+        message += `${index + 1}. *${item.name}*\n`;
+        message += `   • Unit Price: ₹${unitPrice.toLocaleString('en-IN')}\n`;
+        message += `   • Quantity: ${item.quantity}\n`;
+        message += `   • Item Total: *₹${itemTotal.toLocaleString('en-IN')}*\n\n`;
+      });
+
+      message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `💰 *TOTAL ORDER AMOUNT: ₹${totalPrice.toLocaleString('en-IN')}*\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      message += `Please confirm our purchase order and provide dispatch details. Thank you!`;
+    } else {
+      message += `🛒 *PRO TECH ENTERPRISES - ORDER INQUIRY*\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `👤 *Customer:* ${customerName}\n`;
+      if (customerFirm) message += `🏢 *Firm Name:* ${customerFirm}\n`;
+      if (customerMobile) message += `📱 *Mobile:* ${customerMobile}\n`;
+      if (customerAddress) message += `📍 *Delivery Address:* ${customerAddress}\n`;
+      message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `📦 *REQUESTED ITEMS:*\n\n`;
+
+      items.forEach((item, index) => {
+        message += `${index + 1}. *${item.name}* (Qty: ${item.quantity})\n`;
+      });
+
+      message += `\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `Please share wholesale price quote and stock availability. Thank you!`;
+    }
 
     const encoded = encodeURIComponent(message);
     const waUrl = `https://wa.me/${adminWhatsapp}?text=${encoded}`;
@@ -152,9 +175,17 @@ export default function CartPage() {
                       </h2>
 
                       {user?.canSeePrices && typeof item.price === 'number' ? (
-                        <div className="text-[14px] font-bold text-[#1D4ED8] mt-0.5">
-                          ₹{item.price.toLocaleString('en-IN')}{' '}
-                          <span className="text-[12px] text-slate-400 font-normal">each</span>
+                        <div className="mt-0.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[13px] font-bold text-[#1D4ED8]">
+                              ₹{item.price.toLocaleString('en-IN')}{' '}
+                              <span className="text-[11px] text-slate-400 font-normal">/ unit</span>
+                            </span>
+                            <span className="text-slate-300 sm:hidden">•</span>
+                            <span className="text-[13px] font-bold text-slate-800 sm:hidden">
+                              Total: ₹{(item.price * item.quantity).toLocaleString('en-IN')}
+                            </span>
+                          </div>
                         </div>
                       ) : (
                         <div className="text-[12px] text-slate-400 mt-0.5 font-medium">
@@ -183,9 +214,12 @@ export default function CartPage() {
                     {/* Subtotal on desktop */}
                     {user?.canSeePrices && typeof item.price === 'number' && (
                       <div className="text-right shrink-0 hidden sm:block pr-2">
-                        <div className="text-[12px] text-slate-500">Subtotal</div>
-                        <div className="text-[15px] font-bold text-slate-900">
+                        <div className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Item Total</div>
+                        <div className="text-[16px] font-bold text-slate-900">
                           ₹{(item.price * item.quantity).toLocaleString('en-IN')}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {item.quantity} × ₹{item.price.toLocaleString('en-IN')}
                         </div>
                       </div>
                     )}
@@ -238,16 +272,36 @@ export default function CartPage() {
 
       {/* Sticky Bottom Bar on Mobile with Safe-Area Padding */}
       {items.length > 0 && (
-        <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 bg-white border-t border-slate-200 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lg">
-          <Button
-            variant="primary"
-            size="lg"
-            fullWidth
-            onClick={handleBuyWhatsApp}
-            disabled={!adminWhatsapp}
-          >
-            Buy on WhatsApp
-          </Button>
+        <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 bg-white border-t border-slate-200 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              {user?.canSeePrices && typeof totalPrice === 'number' ? (
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider">Total Amount</div>
+                  <div className="text-[17px] font-bold text-[#1D4ED8] leading-tight">
+                    ₹{totalPrice.toLocaleString('en-IN')}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider">{totalCount} {totalCount === 1 ? 'Item' : 'Items'}</div>
+                  <div className="text-[13px] font-medium text-slate-600">Price on Request</div>
+                </div>
+              )}
+            </div>
+            <div className="flex-1 max-w-[210px]">
+              <Button
+                variant="primary"
+                size="md"
+                fullWidth
+                onClick={handleBuyWhatsApp}
+                disabled={!adminWhatsapp}
+                className="font-bold py-2.5 shadow-sm"
+              >
+                Buy on WhatsApp
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -49,7 +49,9 @@ export type Principal = {
   id: number;
   version: number;
   name: string;
+  firmName?: string;
   mobile?: string;
+  address?: string;
   mustChange?: boolean;
   canSeePrices?: boolean;
 };
@@ -81,7 +83,7 @@ export const principal = cache(async (): Promise<Principal | null> => {
     const row = await db().execute({
       sql: role === 'admin'
         ? 'SELECT id, username AS name, token_version FROM admin_users WHERE id = ?'
-        : 'SELECT id, name, mobile, token_version, must_change_password, price_visible, price_expires_at FROM users WHERE id = ?',
+        : 'SELECT id, name, firm_name, mobile, address, token_version, must_change_password, price_visible, price_expires_at FROM users WHERE id = ?',
       args: [id],
     });
     const u = row.rows[0];
@@ -97,7 +99,9 @@ export const principal = cache(async (): Promise<Principal | null> => {
       name: String(u.name),
       version,
       canSeePrices,
+      ...(u.firm_name ? { firmName: String(u.firm_name) } : {}),
       ...(u.mobile ? { mobile: String(u.mobile) } : {}),
+      ...(u.address ? { address: String(u.address) } : {}),
       ...(role === 'user' ? { mustChange: Boolean(u.must_change_password) } : {}),
     };
     principalCache.set(token, { p: pResult, expires: now + 5000 });

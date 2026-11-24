@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { MoreVertical, Key, Copy, Check, ArrowLeft, Clock, Trash2, AlertTriangle, Smartphone } from 'lucide-react';
+import { MoreVertical, Key, Copy, Check, ArrowLeft, Clock, Trash2, AlertTriangle, Smartphone, Building2, MapPin } from 'lucide-react';
 import SearchBar from '@/components/ui/SearchBar';
 import Pagination from '@/components/ui/Pagination';
 import Modal from '@/components/ui/Modal';
@@ -16,7 +16,9 @@ import { useToast } from '@/components/ui/Toast';
 interface AdminUser {
   id: number;
   name: string;
+  firmName?: string;
   mobile: string;
+  address?: string;
   createdAt: string;
   priceVisible: boolean;
   expiresAt: string | null;
@@ -414,7 +416,7 @@ export default function AdminUsersPage() {
                 setSearch(val);
                 setPage(1);
               }}
-              placeholder="Search by name or mobile..."
+              placeholder="Search by name, firm or mobile..."
             />
           </div>
         </div>
@@ -477,6 +479,12 @@ export default function AdminUsersPage() {
                           <h2 className="text-[14px] font-bold text-slate-900 truncate leading-snug">
                             {u.name}
                           </h2>
+                          {u.firmName && (
+                            <div className="flex items-center gap-1 text-[12px] font-semibold text-blue-700 truncate mt-0.5">
+                              <Building2 size={12} className="text-blue-500 shrink-0" />
+                              <span className="truncate">{u.firmName}</span>
+                            </div>
+                          )}
                           <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono leading-tight mt-0.5">
                             <span className="flex items-center gap-1 font-semibold text-slate-700">
                               <Smartphone size={12} className="text-slate-400 shrink-0" />
@@ -485,6 +493,12 @@ export default function AdminUsersPage() {
                             <span className="text-slate-300">•</span>
                             <span className="text-slate-400 font-sans">Reg: {regDate}</span>
                           </div>
+                          {u.address && (
+                            <div className="flex items-start gap-1 text-[11px] text-slate-500 mt-1 leading-tight">
+                              <MapPin size={11} className="text-slate-400 shrink-0 mt-0.5" />
+                              <span className="line-clamp-2">{u.address}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -583,8 +597,8 @@ export default function AdminUsersPage() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase font-semibold">
                   <tr>
-                    <th className="px-5 py-3">Customer</th>
-                    <th className="px-5 py-3">Mobile</th>
+                    <th className="px-5 py-3">Customer &amp; Firm</th>
+                    <th className="px-5 py-3">Contact &amp; Address</th>
                     <th className="px-5 py-3">Registration</th>
                     <th className="px-5 py-3">Price Visibility</th>
                     <th className="px-5 py-3">Auto-Off Timer</th>
@@ -601,9 +615,32 @@ export default function AdminUsersPage() {
 
                     return (
                       <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-5 py-4 font-semibold text-slate-900">{u.name}</td>
-                        <td className="px-5 py-4 font-mono text-slate-700">{u.mobile}</td>
-                        <td className="px-5 py-4 text-slate-500 text-xs">{regDate}</td>
+                        <td className="px-5 py-3.5">
+                          <div className="font-semibold text-slate-900">{u.name}</div>
+                          {u.firmName ? (
+                            <div className="text-xs font-semibold text-blue-700 flex items-center gap-1 mt-0.5">
+                              <Building2 size={12} className="text-blue-500 shrink-0" />
+                              <span>{u.firmName}</span>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-400 italic mt-0.5">No firm name</div>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="font-mono text-xs text-slate-700 font-semibold flex items-center gap-1">
+                            <Smartphone size={12} className="text-slate-400 shrink-0" />
+                            <span>{u.mobile}</span>
+                          </div>
+                          {u.address ? (
+                            <div className="text-xs text-slate-500 flex items-start gap-1 mt-0.5 max-w-xs">
+                              <MapPin size={12} className="text-slate-400 shrink-0 mt-0.5" />
+                              <span className="truncate">{u.address}</span>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-400 italic mt-0.5">No address</div>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-slate-500 text-xs">{regDate}</td>
                         <td className="px-5 py-4">
                           <Switch
                             checked={u.priceVisible}

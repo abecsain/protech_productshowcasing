@@ -28,7 +28,9 @@ export default function AuthPage() {
 
   // Form states
   const [name, setName] = useState('');
+  const [firmName, setFirmName] = useState('');
   const [mobile, setMobile] = useState('');
+  const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -72,7 +74,7 @@ export default function AuthPage() {
       if (!res.ok) {
         setError(data.error || 'Invalid mobile or password');
       } else {
-        router.push('/home');
+        router.push('/products');
         router.refresh();
       }
     } catch {
@@ -93,8 +95,16 @@ export default function AuthPage() {
       setError('Please enter your full name');
       return;
     }
+    if (!firmName.trim()) {
+      setError('Please enter your firm / company name (Mandatory)');
+      return;
+    }
     if (cleanMobile.length !== 10) {
       setError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+    if (!address.trim()) {
+      setError('Please enter your firm address (Mandatory)');
       return;
     }
     if (password !== confirmPassword) {
@@ -113,7 +123,9 @@ export default function AuthPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
+          firmName: firmName.trim(),
           mobile: cleanMobile,
+          address: address.trim(),
           password,
           confirmPassword,
         }),
@@ -122,7 +134,7 @@ export default function AuthPage() {
       if (!res.ok) {
         setError(data.error || 'Registration failed');
       } else {
-        router.push('/home');
+        router.push('/products');
         router.refresh();
       }
     } catch {
@@ -230,13 +242,23 @@ export default function AuthPage() {
             {tab === 'register' && (
               <form onSubmit={handleRegister} className="space-y-4">
                 <Input
-                  label="Name"
+                  label="Full Name"
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter your full name"
                   autoComplete="name"
+                />
+
+                <Input
+                  label="Firm / Company Name"
+                  type="text"
+                  required
+                  value={firmName}
+                  onChange={(e) => setFirmName(e.target.value)}
+                  placeholder="e.g. Surat Textile Machineries / Tech Enterprises"
+                  autoComplete="organization"
                 />
 
                 <PhoneInput
@@ -246,6 +268,16 @@ export default function AuthPage() {
                   onChange={(e) => setMobile(e.target.value.replace(/\D/g, ''))}
                   placeholder="10-digit number"
                   autoComplete="tel"
+                />
+
+                <Input
+                  label="Firm Address"
+                  type="text"
+                  required
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Shop/Office No., Street, City, State, PIN"
+                  autoComplete="street-address"
                 />
 
                 <PasswordInput

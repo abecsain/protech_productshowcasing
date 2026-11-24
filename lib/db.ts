@@ -32,6 +32,12 @@ export async function ensureSchema() {
       try {
         const check = await c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users' LIMIT 1");
         if (check.rows.length > 0) {
+          try {
+            await c.execute("ALTER TABLE users ADD COLUMN firm_name TEXT NOT NULL DEFAULT ''");
+          } catch {}
+          try {
+            await c.execute("ALTER TABLE users ADD COLUMN address TEXT NOT NULL DEFAULT ''");
+          } catch {}
           globalForDb.__turso_schema_ready = true;
           return;
         }
@@ -42,7 +48,9 @@ export async function ensureSchema() {
         `CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
+          firm_name TEXT NOT NULL DEFAULT '',
           mobile TEXT NOT NULL UNIQUE,
+          address TEXT NOT NULL DEFAULT '',
           password_hash TEXT NOT NULL,
           must_change_password INTEGER NOT NULL DEFAULT 0,
           price_visible INTEGER NOT NULL DEFAULT 0,

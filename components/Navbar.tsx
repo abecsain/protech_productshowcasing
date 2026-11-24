@@ -98,77 +98,95 @@ export default function Navbar() {
               )}
             </Link>
 
-            {/* User Dropdown */}
-            <div className="relative">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                icon={<UserIcon size={16} />}
-                aria-expanded={userDropdownOpen}
-              >
-                <span className="max-w-[120px] truncate">{user?.name || 'User'}</span>
-              </Button>
-
-              {userDropdownOpen && (
-                <div
-                  className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-sm py-1.5 z-50"
-                  onClick={() => setUserDropdownOpen(false)}
+            {/* User Dropdown or Sign In Button */}
+            {user ? (
+              <div className="relative">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  icon={<UserIcon size={16} />}
+                  aria-expanded={userDropdownOpen}
                 >
-                  <div className="px-3 py-1.5 border-b border-slate-100">
-                    <div className="flex items-center justify-between gap-1">
-                      <p className="text-[13px] font-bold text-slate-900 truncate">{user?.name}</p>
-                      {user?.role === 'admin' && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-[#1D4ED8]">
-                          Admin
-                        </span>
+                  <span className="max-w-[120px] truncate">{user.name}</span>
+                </Button>
+
+                {userDropdownOpen && (
+                  <div
+                    className="absolute right-0 mt-1 w-52 bg-white border border-slate-200 rounded-lg shadow-sm py-1.5 z-50"
+                    onClick={() => setUserDropdownOpen(false)}
+                  >
+                    <div className="px-3 py-1.5 border-b border-slate-100">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-[13px] font-bold text-slate-900 truncate">{user.name}</p>
+                        {user.role === 'admin' && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-[#1D4ED8]">
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                      {user.firmName && (
+                        <p className="text-[12px] text-[#1D4ED8] font-semibold truncate mt-0.5">{user.firmName}</p>
+                      )}
+                      {user.mobile ? (
+                        <p className="text-[11px] text-slate-500 font-mono">{user.mobile}</p>
+                      ) : (
+                        <p className="text-[11px] text-slate-400">Administrator</p>
                       )}
                     </div>
-                    {user?.mobile ? (
-                      <p className="text-[11px] text-slate-500 font-mono">{user.mobile}</p>
-                    ) : (
-                      <p className="text-[11px] text-slate-400">Administrator</p>
-                    )}
-                  </div>
 
-                  {user?.role === 'admin' ? (
-                    <Link
-                      href="/admin"
-                      className="flex items-center gap-2 px-3 py-2 text-[13px] font-semibold text-[#1D4ED8] hover:bg-blue-50 transition-colors"
-                    >
-                      <Shield size={16} className="text-[#1D4ED8]" />
-                      <span>Admin Panel</span>
-                    </Link>
-                  ) : (
+                    {user.role === 'admin' ? (
+                      <Link
+                        href="/admin"
+                        className="flex items-center gap-2 px-3 py-2 text-[13px] font-semibold text-[#1D4ED8] hover:bg-blue-50 transition-colors"
+                      >
+                        <Shield size={16} className="text-[#1D4ED8]" />
+                        <span>Admin Panel</span>
+                      </Link>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        fullWidth
+                        onClick={() => setShowPasswordModal(true)}
+                        className="justify-start px-3 py-2 text-[13px] text-slate-700"
+                        icon={<Key size={16} className="text-slate-400" />}
+                      >
+                        Change Password
+                      </Button>
+                    )}
+
                     <Button
                       variant="ghost"
                       size="sm"
                       fullWidth
-                      onClick={() => setShowPasswordModal(true)}
-                      className="justify-start px-3 py-2 text-[13px] text-slate-700"
-                      icon={<Key size={16} className="text-slate-400" />}
+                      onClick={handleLogout}
+                      className="justify-start px-3 py-2 text-[13px] text-red-600 hover:text-red-700 hover:bg-red-50"
+                      icon={<LogOut size={16} className="text-red-500" />}
                     >
-                      Change Password
+                      Logout
                     </Button>
-                  )}
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    fullWidth
-                    onClick={handleLogout}
-                    className="justify-start px-3 py-2 text-[13px] text-red-600 hover:text-red-700 hover:bg-red-50"
-                    icon={<LogOut size={16} className="text-red-500" />}
-                  >
-                    Logout
-                  </Button>
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link href="/auth">
+                <Button variant="primary" size="sm" icon={<UserIcon size={15} />}>
+                  Sign In / Register
+                </Button>
+              </Link>
+            )}
           </div>
 
-          {/* Right (Mobile): Cart Icon & Hamburger Button */}
-          <div className="flex sm:hidden items-center gap-1">
+          {/* Right (Mobile): Sign In button (if not logged in) + Cart Icon + Hamburger */}
+          <div className="flex sm:hidden items-center gap-1.5">
+            {!user && (
+              <Link href="/auth">
+                <Button variant="primary" size="sm" className="h-8 px-2.5 text-xs font-semibold">
+                  Sign In
+                </Button>
+              </Link>
+            )}
             <Link
               href="/cart"
               className="relative text-slate-700 min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -236,50 +254,67 @@ export default function Navbar() {
                 </span>
               </Link>
 
-              <div className="pt-2 border-t border-slate-100">
-                <div className="px-3 py-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <p className="text-[13px] font-bold text-slate-900">{user?.name}</p>
-                    {user?.role === 'admin' && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-[#1D4ED8]">
-                        Admin
-                      </span>
+              {user ? (
+                <div className="pt-2 border-t border-slate-100">
+                  <div className="px-3 py-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-[13px] font-bold text-slate-900">{user.name}</p>
+                      {user.role === 'admin' && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-[#1D4ED8]">
+                          Admin
+                        </span>
+                      )}
+                    </div>
+                    {user.firmName && (
+                      <p className="text-[12px] text-[#1D4ED8] font-semibold truncate mt-0.5">{user.firmName}</p>
+                    )}
+                    {user.mobile ? (
+                      <p className="text-[11px] text-slate-500 font-mono">{user.mobile}</p>
+                    ) : (
+                      <p className="text-[11px] text-slate-400">Administrator</p>
                     )}
                   </div>
-                  {user?.mobile ? (
-                    <p className="text-[11px] text-slate-500 font-mono">{user.mobile}</p>
-                  ) : (
-                    <p className="text-[11px] text-slate-400">Administrator</p>
-                  )}
-                </div>
 
-                {user?.role !== 'admin' && (
+                  {user.role !== 'admin' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      fullWidth
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        setShowPasswordModal(true);
+                      }}
+                      className="justify-start px-3 py-2.5 text-[14px] text-slate-700"
+                      icon={<Key size={16} className="text-slate-400" />}
+                    >
+                      Change Password
+                    </Button>
+                  )}
+
                   <Button
                     variant="ghost"
                     size="sm"
                     fullWidth
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      setShowPasswordModal(true);
-                    }}
-                    className="justify-start px-3 py-2.5 text-[14px] text-slate-700"
-                    icon={<Key size={16} className="text-slate-400" />}
+                    onClick={handleLogout}
+                    className="justify-start px-3 py-2.5 text-[14px] text-red-600 hover:text-red-700 hover:bg-red-50"
+                    icon={<LogOut size={16} className="text-red-500" />}
                   >
-                    Change Password
+                    Logout
                   </Button>
-                )}
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  fullWidth
-                  onClick={handleLogout}
-                  className="justify-start px-3 py-2.5 text-[14px] text-red-600 hover:text-red-700 hover:bg-red-50"
-                  icon={<LogOut size={16} className="text-red-500" />}
-                >
-                  Logout
-                </Button>
-              </div>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <Link
+                    href="/auth"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block"
+                  >
+                    <Button variant="primary" fullWidth size="md" icon={<UserIcon size={16} />}>
+                      Sign In / Register
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         )}

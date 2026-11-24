@@ -6,7 +6,9 @@ import { useToast } from './ui/Toast';
 export interface SecurityUserInfo {
   id?: number;
   name: string;
+  firmName?: string;
   mobile: string;
+  address?: string;
   role: string;
   canSeePrices: boolean;
   mustChange?: boolean;
@@ -53,7 +55,9 @@ export default function SecurityProvider({ children }: { children: React.ReactNo
           setUserInfo({
             id: user.id,
             name: user.name || 'Customer',
+            firmName: user.firmName || '',
             mobile: user.mobile || '',
+            address: user.address || '',
             role: user.role || 'user',
             canSeePrices: currentCanSee,
             mustChange: Boolean(user.mustChange),
