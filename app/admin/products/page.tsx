@@ -107,6 +107,12 @@ export default function AdminProductsPage() {
   const [deleteCategoryLoading, setDeleteCategoryLoading] = useState(false);
   const [deleteCategoryError, setDeleteCategoryError] = useState('');
 
+  // Category Editing / Renaming
+  const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [editCategoryLoading, setEditCategoryLoading] = useState(false);
+  const [editCategoryError, setEditCategoryError] = useState('');
+
   // Category Interactive & Responsive Display Modes
   const [categoryFilterSearch, setCategoryFilterSearch] = useState('');
   const [showAddCategoryBar, setShowAddCategoryBar] = useState(false);
@@ -401,6 +407,44 @@ export default function AdminProductsPage() {
     }
   };
 
+  const handleOpenEditCategory = (cat: CategoryItem) => {
+    setEditingCategory(cat);
+    setEditCategoryName(cat.name);
+    setEditCategoryError('');
+  };
+
+  const handleConfirmEditCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory) return;
+    const trimmed = editCategoryName.trim();
+    if (!trimmed) {
+      setEditCategoryError('Category name cannot be empty');
+      return;
+    }
+    setEditCategoryLoading(true);
+    setEditCategoryError('');
+    try {
+      const res = await fetch(`/api/admin/categories/${editingCategory.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        showToast(`Category renamed to "${trimmed}"`, 'success');
+        setEditingCategory(null);
+        loadCategories();
+        loadProducts();
+      } else {
+        setEditCategoryError(d.error || 'Failed to rename category');
+      }
+    } catch {
+      setEditCategoryError('Network error while renaming category');
+    } finally {
+      setEditCategoryLoading(false);
+    }
+  };
+
   const handleConfirmDeleteProduct = async () => {
     if (!deletingProduct) return;
     setDeletingLoading(true);
@@ -479,7 +523,7 @@ export default function AdminProductsPage() {
     setShowProductModal(true);
 
     try {
-      const res = await fetch(`/api/products/${prod.id}`);
+      const res = await fetch(`/api/admin/products/${prod.id}`);
       if (res.ok) {
         const d = await res.json();
         const imgs = (d.product?.imageAssets || []).map((img: { publicId: string; version: string; previewUrl: string; sizeKb?: number }) => ({
@@ -1384,18 +1428,31 @@ export default function AdminProductsPage() {
                       {cat.productCount ?? 0} {cat.productCount === 1 ? 'product' : 'products'}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setShowManageCategoriesModal(false);
-                      handleOpenDeleteCategory(cat);
-                    }}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50 text-xs shrink-0"
-                    icon={<Trash2 size={14} />}
-                  >
-                    Delete
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        handleOpenEditCategory(cat);
+                      }}
+                      className="text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-blue-50 text-xs"
+                      icon={<Edit2 size={13} />}
+                    >
+                      Rename
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowManageCategoriesModal(false);
+                        handleOpenDeleteCategory(cat);
+                      }}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 text-xs"
+                      icon={<Trash2 size={13} />}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1410,6 +1467,50 @@ export default function AdminProductsPage() {
               </Button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Rename Category Modal */}
+      {editingCategory && (
+        <Modal
+          isOpen={true}
+          onClose={() => setEditingCategory(null)}
+          title="Rename Category"
+          maxWidth="sm"
+        >
+          <form onSubmit={handleConfirmEditCategory} className="space-y-4">
+            <Input
+              label="Category Name"
+              required
+              value={editCategoryName}
+              onChange={(e) => {
+                setEditCategoryName(e.target.value);
+                if (editCategoryError) setEditCategoryError('');
+              }}
+              placeholder="Enter category name"
+              error={editCategoryError}
+              autoFocus
+            />
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setEditingCategory(null)}
+                disabled={editCategoryLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                loading={editCategoryLoading}
+              >
+                Save
+              </Button>
+            </div>
+          </form>
         </Modal>
       )}
 

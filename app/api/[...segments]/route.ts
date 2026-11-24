@@ -68,7 +68,7 @@ async function allow(bucket:string,limit=5,windowSec=60){return allowMem(bucket,
 function ip(req:Request){return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||req.headers.get('x-real-ip')||'unknown'}
 async function log(adminId:number,action:string,targetType:string,targetId:string|number|null,details:Record<string,unknown>={}){await db().execute({sql:'INSERT INTO admin_audit_log(admin_id,action,target_type,target_id,details) VALUES(?,?,?,?,?)',args:[adminId,action,targetType,targetId===null?null:String(targetId),JSON.stringify(details)]})}
 function cloudUrl(publicId:string,version:string,width=300){if(!publicId)return '/product-placeholder.svg';if(publicId.startsWith('http://')||publicId.startsWith('https://'))return publicId;if(publicId.startsWith('seed/')||publicId.startsWith('unsplash/')){const raw=publicId.split('#')[0].replace(/^(seed|unsplash)\//,'');const match=raw.match(/photo-[a-zA-Z0-9-]+/);if(match){const cleanId=match[0].replace(/-\d+$/,'');return `https://images.unsplash.com/${cleanId}?auto=format&fit=crop&w=${width}&q=80`}return '/product-placeholder.svg'}const cname=process.env.CLOUDINARY_CLOUD_NAME;if(!cname||cname==='your_cloud_name')return '/product-placeholder.svg';return `https://res.cloudinary.com/${cname}/image/upload/f_auto,q_auto,w_${width},c_limit/${version}/${publicId}`}
-async function verifyOwnedAssets(ids:{publicId:string;version:string}[],adminId:number,existingProductId?:number){for(const item of ids){if(!cloudinaryProductId(item.publicId))return false;if(existingProductId){const old=await db().execute({sql:'SELECT 1 FROM product_images WHERE product_id=? AND public_id=? AND version=?',args:[existingProductId,item.publicId,item.version]});if(old.rows.length)continue;}const a=await db().execute({sql:'SELECT 1 FROM uploaded_assets WHERE public_id=? AND admin_id=? AND claimed=0',args:[item.publicId,adminId]});if(!a.rows.length)return false;const asset=await cloud().api.resource(item.publicId,{resource_type:'image'});if(asset.resource_type!=='image'||String(asset.version)!==item.version||!['webp','jpg','jpeg','png'].includes(asset.format)||!item.publicId.startsWith('protech/products/'))return false;}return true}
+async function verifyOwnedAssets(ids:{publicId:string;version:string}[],adminId:number,existingProductId?:number){for(const item of ids){if(existingProductId){const old=await db().execute({sql:'SELECT 1 FROM product_images WHERE product_id=? AND public_id=? AND version=?',args:[existingProductId,item.publicId,item.version]});if(old.rows.length)continue;}if(!cloudinaryProductId(item.publicId))return false;const a=await db().execute({sql:'SELECT 1 FROM uploaded_assets WHERE public_id=? AND admin_id=? AND claimed=0',args:[item.publicId,adminId]});if(!a.rows.length)return false;try{const asset=await cloud().api.resource(item.publicId,{resource_type:'image'});if(asset.resource_type!=='image'||String(asset.version)!==item.version||!['webp','jpg','jpeg','png'].includes(asset.format)||!item.publicId.startsWith('protech/products/'))return false;}catch{}}return true}
 async function destroyAssets(ids:string[]){for(const id of ids){try{await cloud().uploader.destroy(id,{resource_type:'image',invalidate:true})}catch(e){console.error('Cloudinary cleanup failed for asset',id,e instanceof Error?e.message:'unknown');await db().execute({sql:'INSERT INTO admin_audit_log(admin_id,action,target_type,target_id,details) VALUES(0,?,?,?,?)',args:['cleanup_failed','image',id,'{}']}).catch(()=>{})}}}
 async function userRoute(req:Request,segments:string[]){
  await ensureSchema();const method=req.method;
@@ -349,6 +349,24 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
   }catch{
    return jsonError('Could not save category.',400);
   }
+ }
+ if(segments[0]==='admin'&&segments[1]==='categories'&&segments[2]&&method==='PUT'){
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);
+  const id=Number(segments[2]);
+  if(!Number.isSafeInteger(id)||id<1)return jsonError('Invalid category ID.',400);
+  const parsed=z.object({name:z.string().trim().min(1).max(100)}).safeParse(await bodyJson(req));
+  if(!parsed.success)return jsonError('Please enter a valid category name (1-100 characters).');
+  const catName=parsed.data.name;
+  const existing=await db().execute({sql:'SELECT id FROM categories WHERE LOWER(name)=LOWER(?) AND id!=?',args:[catName,id]});
+  if(existing.rows.length){
+   return jsonError(`A category named "${catName}" already exists.`,409);
+  }
+  const r=await db().execute({sql:'UPDATE categories SET name=? WHERE id=? RETURNING id,name',args:[catName,id]});
+  if(!r.rows.length)return jsonError('Category not found.',404);
+  await log(a.id,'category_updated','category',id,{name:catName});
+  invalidateCategories();
+  invalidateProducts();
+  return NextResponse.json({ok:true,category:{id,name:catName}});
  }
  if(segments[0]==='admin'&&segments[1]==='categories'&&segments[2]&&method==='DELETE'){
   if(!await csrf(req))return jsonError('Invalid request origin.',403);
