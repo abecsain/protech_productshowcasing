@@ -24,7 +24,7 @@ export default function Footer({ className = '' }: { className?: string }) {
         {/* Brand & Address */}
         <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
           <span className="font-bold text-[15px] text-slate-900 tracking-tight">
-            ProTech Enterprises
+            Protech Enterprises
           </span>
           <span className="hidden sm:inline text-slate-300">•</span>
           <div className="flex items-center gap-1.5 text-slate-600 font-medium text-[13px]">
@@ -50,7 +50,7 @@ export default function Footer({ className = '' }: { className?: string }) {
           </a>
 
           <p className="text-slate-400 text-xs">
-            © {new Date().getFullYear()} ProTech Enterprises. All rights reserved.
+            © {new Date().getFullYear()} Protech Enterprises. All rights reserved.
           </p>
         </div>
       </PageContainer>

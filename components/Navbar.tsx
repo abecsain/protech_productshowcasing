@@ -58,7 +58,7 @@ export default function Navbar() {
             href="/home"
             className="text-[17px] sm:text-[18px] font-bold text-[#1D4ED8] hover:text-[#1E40AF] transition-colors"
           >
-            ProTech Enterprises
+            Protech Enterprises
           </Link>
 
           {/* Right (Laptop): Products & User Links */}

@@ -22,7 +22,7 @@ export default async function HomePage() {
           {/* Header Section */}
           <Card padding="lg" className="mb-8">
             <h1 className="text-[22px] sm:text-[28px] font-bold text-slate-900 tracking-tight leading-tight">
-              ProTech Enterprises
+              Protech Enterprises
             </h1>
             <p className="mt-2 text-[15px] sm:text-[16px] text-slate-600">
               Your Trusted Technology Partner – Quality Hardware, Networking & Accessories.

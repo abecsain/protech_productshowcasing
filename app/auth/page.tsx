@@ -153,7 +153,7 @@ export default function AuthPage() {
             {/* 1. Brand Header */}
             <div className="text-center mb-4">
               <h1 className="text-[20px] font-bold text-[#1D4ED8] tracking-tight">
-                ProTech Enterprises
+                Protech Enterprises
               </h1>
               {/* 2. Subtitle */}
               <p className="mt-1 text-[14px] text-slate-600">

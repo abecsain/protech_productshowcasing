@@ -60,7 +60,7 @@ export default function AdminDashboardPage() {
           Admin Dashboard
         </h1>
         <p className="text-[13px] sm:text-[14px] text-slate-500 mt-1">
-          ProTech Enterprises Administration Overview
+          Protech Enterprises Administration Overview
         </p>
       </div>
 

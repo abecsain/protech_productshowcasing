@@ -169,7 +169,7 @@ export default function ProductModal({
 
           {/* Description */}
           <p className="mt-2.5 text-[14px] text-slate-600 leading-relaxed">
-            {description || (loading ? 'Loading description...' : 'Quality guaranteed by ProTech Enterprises.')}
+            {description || (loading ? 'Loading description...' : 'Quality guaranteed by Protech Enterprises.')}
           </p>
         </div>
 
