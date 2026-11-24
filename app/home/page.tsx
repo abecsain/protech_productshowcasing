@@ -16,10 +16,7 @@ export default async function HomePage() {
     <div className="min-h-[100dvh] bg-[#F8FAFC] flex flex-col">
       <Navbar />
 
-      <main
-        className="flex-1 py-6 sm:py-10 ss-protected-content select-none-secure"
-        data-ss-protect="true"
-      >
+      <main className="flex-1 py-6 sm:py-10">
         <PageContainer>
           {/* Header Section */}
           <Card padding="lg" className="mb-8">

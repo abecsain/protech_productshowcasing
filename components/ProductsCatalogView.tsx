@@ -305,10 +305,7 @@ export default function ProductsCatalogView({
       </div>
 
       {/* Main Content Area */}
-      <main
-        className="flex-1 py-6 sm:py-8 pb-28 sm:pb-12 ss-protected-content select-none-secure"
-        data-ss-protect="true"
-      >
+      <main className="flex-1 py-6 sm:py-8 pb-28 sm:pb-12">
         <PageContainer>
           <div className="flex gap-8 items-start">
             {/* Left Sidebar Category List (Laptop only) */}

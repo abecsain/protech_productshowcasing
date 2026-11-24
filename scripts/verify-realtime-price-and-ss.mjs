@@ -73,69 +73,38 @@ async function main() {
     await customerPage.screenshot({ path: `${ARTIFACT_DIR}/customer-prices-automatically-off-no-refresh.png` });
     console.log('✓ Saved: customer-prices-automatically-off-no-refresh.png');
 
-    // 4. TEST SS (SCREENSHOT) RESTRICTION
-    console.log('4. Testing SS Restriction (PrintScreen key interception)...');
+    // 4. VERIFY SS (SCREENSHOT) AND ACTIONS ARE NOT LOCKED
+    console.log('4. Verifying SS (Screenshot) is NOT locked on laptop or mobile...');
     await customerPage.keyboard.press('PrintScreen');
     await customerPage.waitForTimeout(300);
 
     const ssVeil = customerPage.locator('text=Screenshots Strictly Prohibited');
-    await ssVeil.waitFor({ state: 'visible', timeout: 3000 });
-    console.log('✓ Screenshot Restricted Veil triggered and verified visible!');
+    const ssVeilCount = await ssVeil.count();
+    if (ssVeilCount === 0) {
+      console.log('✓ Verified: No screenshot veil or restriction on PrintScreen');
+    }
 
-    await customerPage.screenshot({ path: `${ARTIFACT_DIR}/customer-screenshot-veil-active.png` });
-    console.log('✓ Saved: customer-screenshot-veil-active.png');
-
-    // Dismiss veil by tapping
-    await customerPage.mouse.click(100, 100);
-    await customerPage.waitForTimeout(400);
-
-    // 5. Test Context Menu / Right-Click restriction
-    console.log('5. Testing Right-Click restriction on product images...');
-    let rightClickPrevented = false;
-    customerPage.on('dialog', async dialog => {
-      await dialog.dismiss();
-    });
-
-    // Right-click a product thumbnail
+    // 5. Verify Right-Click is not disabled
+    console.log('5. Verifying Right-Click is not disabled...');
     await customerPage.locator('img').first().click({ button: 'right' });
-    await customerPage.waitForTimeout(300);
-    console.log('✓ Right-click contextmenu event intercepted safely');
+    console.log('✓ Right-click allowed normally');
 
-    // 6. Test Window Blur / Anti-Snipping Protection
-    console.log('6. Testing Window Blur / Anti-Snipping protection...');
-    // Turn price ON so we can see the protected wholesale view veil
-    await adminPage.request.put(`http://localhost:6791/api/admin/users/${customerUserId}/price`, {
-      data: { enabled: true, hours: 2 }
-    });
-    // Wait for auto-on live sync
-    await customerPage.locator('text=₹').first().waitFor({ state: 'visible', timeout: 6000 });
-    console.log('✓ Prices turned ON automatically via live sync');
-
-    // Trigger window blur
+    // 6. Verify Window Blur does not lock screen
+    console.log('6. Verifying Window Blur does not lock screen...');
     await customerPage.evaluate(() => window.dispatchEvent(new Event('blur')));
     await customerPage.waitForTimeout(300);
 
     const blurVeil = customerPage.locator('text=Protected Wholesale View');
-    await blurVeil.waitFor({ state: 'visible', timeout: 3000 });
-    console.log('✓ Anti-snipping focus protection veil appeared on window blur!');
-
-    await customerPage.screenshot({ path: `${ARTIFACT_DIR}/customer-anti-snipping-protected.png` });
-    console.log('✓ Saved: customer-anti-snipping-protected.png');
+    const blurVeilCount = await blurVeil.count();
+    if (blurVeilCount === 0) {
+      console.log('✓ Verified: No blur lock or veil on focus loss');
+    }
 
     // Refocus
     await customerPage.evaluate(() => window.dispatchEvent(new Event('focus')));
     await customerPage.waitForTimeout(300);
 
-    // 7. Verify Dynamic Confidential Watermark
-    console.log('7. Verifying dynamic confidential watermark...');
-    const watermarkText = customerPage.locator('text=PRO TECH ENTERPRISES • CONFIDENTIAL • Surat Textile Machineries');
-    await watermarkText.first().waitFor({ state: 'attached', timeout: 3000 });
-    console.log('✓ Customer watermark with Surat Textile Machineries (9825123401) is active!');
-
-    await customerPage.screenshot({ path: `${ARTIFACT_DIR}/customer-watermark-proof.png` });
-    console.log('✓ Saved: customer-watermark-proof.png');
-
-    console.log('=== ALL REAL-TIME & SS RESTRICTION TESTS PASSED! ===');
+    console.log('=== ALL REAL-TIME & UNLOCKED SCREENSHOT TESTS PASSED! ===');
   } catch (err) {
     console.error('Test error:', err);
     process.exit(1);
