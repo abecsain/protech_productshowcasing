@@ -86,7 +86,7 @@ export default function CartPage() {
       message += `👤 *Customer:* ${customer.name}\n`;
       if (customer.firmName) message += `🏢 *Firm Name:* ${customer.firmName}\n`;
       if (customer.mobile) message += `📱 *Mobile:* +91 ${customer.mobile}\n`;
-      if (customer.address) message += `📍 *Delivery Address:* ${customer.address}\n`;
+      if (customer.address) message += `📍 *Address:* ${customer.address}\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
       message += `📦 *ORDER ITEMS:*\n\n`;
 
@@ -109,7 +109,7 @@ export default function CartPage() {
       message += `👤 *Customer:* ${customer.name}\n`;
       if (customer.firmName) message += `🏢 *Firm Name:* ${customer.firmName}\n`;
       if (customer.mobile) message += `📱 *Mobile:* +91 ${customer.mobile}\n`;
-      if (customer.address) message += `📍 *Delivery Address:* ${customer.address}\n`;
+      if (customer.address) message += `📍 *Address:* ${customer.address}\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
       message += `📦 *REQUESTED ORDER ITEMS:*\n\n`;
 
@@ -161,7 +161,7 @@ export default function CartPage() {
       errors.mobile = 'Enter a valid 10-digit Indian mobile number';
     }
     if (!trimmedAddress) {
-      errors.address = 'Delivery address is required';
+      errors.address = 'Address is required';
     }
 
     if (Object.keys(errors).length > 0) {
@@ -455,7 +455,7 @@ export default function CartPage() {
             />
 
             <Input
-              label="Delivery Address"
+              label="Address"
               required
               multiline
               rows={2}

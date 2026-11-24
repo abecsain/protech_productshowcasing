@@ -104,7 +104,7 @@ export default function AuthPage() {
       return;
     }
     if (!address.trim()) {
-      setError('Please enter your firm address (Mandatory)');
+      setError('Please enter your address (Mandatory)');
       return;
     }
     if (password !== confirmPassword) {
@@ -271,7 +271,7 @@ export default function AuthPage() {
                 />
 
                 <Input
-                  label="Firm Address"
+                  label="Address"
                   type="text"
                   required
                   value={address}
