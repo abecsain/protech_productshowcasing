@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Trash2, ShoppingCart, ArrowLeft } from 'lucide-react';
 import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import QuantityStepper from '@/components/ui/QuantityStepper';
 import { useCart } from '@/components/CartContext';
 import { useSecurity } from '@/components/SecurityProvider';
@@ -55,7 +56,7 @@ export default function CartPage() {
     let message = '';
 
     if (canSeePrices && typeof totalPrice === 'number') {
-      message += `🛒 *PRO TECH ENTERPRISES - PURCHASE ORDER*\n`;
+      message += `🛒 *PROTECH ENTERPRISES - PURCHASE ORDER*\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
       message += `👤 *Customer:* ${customerName}\n`;
       if (customerFirm) message += `🏢 *Firm Name:* ${customerFirm}\n`;
@@ -78,7 +79,7 @@ export default function CartPage() {
       message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
       message += `Please confirm our purchase order and provide dispatch details. Thank you!`;
     } else {
-      message += `🛒 *PRO TECH ENTERPRISES - ORDER INQUIRY*\n`;
+      message += `🛒 *PROTECH ENTERPRISES - ORDER INQUIRY*\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
       message += `👤 *Customer:* ${customerName}\n`;
       if (customerFirm) message += `🏢 *Firm Name:* ${customerFirm}\n`;
@@ -269,6 +270,8 @@ export default function CartPage() {
           )}
         </PageContainer>
       </main>
+
+      <Footer className="hidden sm:block" />
 
       {/* Sticky Bottom Bar on Mobile with Safe-Area Padding */}
       {items.length > 0 && (

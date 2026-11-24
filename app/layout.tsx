@@ -11,8 +11,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Pro Tech Enterprises | Product Showcase',
-  description: 'Pro Tech Enterprises – Your Trusted Technology Partner.',
+  title: 'ProTech Enterprises | Product Showcase',
+  description: 'ProTech Enterprises – Your Trusted Technology Partner.',
 };
 
 export default function RootLayout({

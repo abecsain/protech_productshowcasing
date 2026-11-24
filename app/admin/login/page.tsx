@@ -49,7 +49,7 @@ export default function AdminLoginPage() {
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center px-4 pt-10 sm:pt-16 pb-16">
       <div className="text-center mb-6 w-full max-w-[400px]">
         <h1 className="text-[20px] font-bold text-[#1D4ED8] tracking-tight">
-          Pro Tech Enterprises
+          ProTech Enterprises
         </h1>
         <p className="mt-1 text-[15px] text-slate-600">
           Administrator Control Panel

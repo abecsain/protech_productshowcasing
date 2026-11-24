@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import PageContainer from '@/components/ui/PageContainer';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
@@ -21,7 +22,7 @@ export default async function HomePage() {
           {/* Header Section */}
           <Card padding="lg" className="mb-8">
             <h1 className="text-[22px] sm:text-[28px] font-bold text-slate-900 tracking-tight leading-tight">
-              Pro Tech Enterprises
+              ProTech Enterprises
             </h1>
             <p className="mt-2 text-[15px] sm:text-[16px] text-slate-600">
               Your Trusted Technology Partner – Quality Hardware, Networking & Accessories.
@@ -64,13 +65,7 @@ export default async function HomePage() {
         </PageContainer>
       </main>
 
-      {/* Clean Business Footer */}
-      <footer className="border-t border-slate-200 bg-white py-6 mt-12 text-[13px] text-slate-500">
-        <PageContainer className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-          <span className="font-semibold text-slate-800">Pro Tech Enterprises</span>
-          <p>© {new Date().getFullYear()} Pro Tech Enterprises. All rights reserved.</p>
-        </PageContainer>
-      </footer>
+      <Footer className="mt-12" />
     </div>
   );
 }

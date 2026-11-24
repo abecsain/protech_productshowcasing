@@ -78,7 +78,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Mobile Top Bar (height 56px) - Sticky with highest z-index */}
       <header className="sm:hidden sticky top-0 z-50 bg-white border-b border-slate-200 h-14 px-4 flex items-center justify-between">
         <Link href="/admin" className="text-[17px] font-bold text-[#1D4ED8]">
-          Pro Tech Admin
+          ProTech Admin
         </Link>
         <div className="flex items-center gap-1.5">
           <Link
@@ -173,7 +173,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Top Brand */}
         <div className="pb-5 mb-4 border-b border-slate-100">
           <Link href="/admin" className="text-[18px] font-bold text-[#1D4ED8] block">
-            Pro Tech Admin
+            ProTech Admin
           </Link>
           <span className="text-[12px] text-slate-400">Control Panel</span>
         </div>

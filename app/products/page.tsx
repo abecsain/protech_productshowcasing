@@ -1,5 +1,6 @@
 import React from 'react';
 import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import PageContainer from '@/components/ui/PageContainer';
 import ProductsCatalogView from '@/components/ProductsCatalogView';
 import { getCachedCategories, getCachedProductsPage } from '@/lib/catalog';
@@ -43,13 +44,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         initialQuery={q}
       />
 
-      {/* Clean Business Footer */}
-      <footer className="border-t border-slate-200 bg-white py-6 text-[13px] text-slate-500">
-        <PageContainer className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-          <span className="font-semibold text-slate-800">Pro Tech Enterprises</span>
-          <p>© {new Date().getFullYear()} Pro Tech Enterprises. All rights reserved.</p>
-        </PageContainer>
-      </footer>
+      <Footer />
     </div>
   );
 }
