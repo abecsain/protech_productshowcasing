@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Check, Circle } from 'lucide-react';
@@ -14,7 +14,17 @@ import Button from '@/components/ui/Button';
 
 export default function AuthPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [tab, setTab] = useState<'login' | 'register'>('register');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam === 'login' || tabParam === 'register') {
+        setTab(tabParam);
+      }
+    }
+  }, []);
 
   // Form states
   const [name, setName] = useState('');
@@ -135,15 +145,15 @@ export default function AuthPage() {
               </h1>
               {/* 2. Subtitle */}
               <p className="mt-1 text-[14px] text-slate-600">
-                Sign in to view our products.
+                {tab === 'register' ? 'Register to view our products.' : 'Sign in to view our products.'}
               </p>
             </div>
 
-            {/* 3. Segmented Tabs (Login | Register) */}
+            {/* 3. Segmented Tabs (Register | Login) */}
             <Tabs
               tabs={[
-                { id: 'login', label: 'Login' },
                 { id: 'register', label: 'Register' },
+                { id: 'login', label: 'Login' },
               ]}
               activeTab={tab}
               onChange={(id) => {
@@ -196,6 +206,22 @@ export default function AuthPage() {
                   >
                     Sign In
                   </Button>
+                </div>
+
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab('register');
+                      setError('');
+                    }}
+                    className="text-[13px] text-slate-600 hover:text-[#1D4ED8] transition-colors"
+                  >
+                    Don&apos;t have an account?{' '}
+                    <span className="font-semibold text-[#1D4ED8] underline-offset-2 hover:underline">
+                      Register
+                    </span>
+                  </button>
                 </div>
               </form>
             )}
@@ -323,6 +349,22 @@ export default function AuthPage() {
                   >
                     Create Account
                   </Button>
+                </div>
+
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab('login');
+                      setError('');
+                    }}
+                    className="text-[13px] text-slate-600 hover:text-[#1D4ED8] transition-colors"
+                  >
+                    Already have an account?{' '}
+                    <span className="font-semibold text-[#1D4ED8] underline-offset-2 hover:underline">
+                      Sign In
+                    </span>
+                  </button>
                 </div>
               </form>
             )}

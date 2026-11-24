@@ -22,7 +22,7 @@ async function main() {
     const customerPage = await customerContext.newPage();
 
     // Customer login: 9825123401 (Aarav Patel)
-    await customerPage.goto('http://localhost:6791/auth');
+    await customerPage.goto('http://localhost:6791/auth?tab=login');
     await customerPage.fill('input[type="tel"]', '9825123401');
     await customerPage.fill('input[type="password"]', 'Customer@123');
     await customerPage.click('button:has-text("Sign In")');
