@@ -40,28 +40,12 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const hasRestoredScrollRef = React.useRef(false);
 
-  // Track scroll position on /admin/users
+  // Clear any legacy scroll position so page always opens cleanly at top
   useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    const handleScroll = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        if (window.scrollY > 0) {
-          sessionStorage.setItem('pte_admin_users_scrollY', String(Math.round(window.scrollY)));
-        }
-      }, 80);
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      clearTimeout(timeout);
-      if (window.scrollY > 0) {
-        sessionStorage.setItem('pte_admin_users_scrollY', String(Math.round(window.scrollY)));
-      }
-      window.removeEventListener('scroll', handleScroll);
-    };
+    try {
+      sessionStorage.removeItem('pte_admin_users_scrollY');
+    } catch {}
   }, []);
 
   // Debounce search to prevent query spam and lag
@@ -196,26 +180,6 @@ export default function AdminUsersPage() {
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
-
-  // Restore scroll position once users load
-  useEffect(() => {
-    if (!loading && users.length > 0 && !hasRestoredScrollRef.current) {
-      hasRestoredScrollRef.current = true;
-      try {
-        const savedYStr = sessionStorage.getItem('pte_admin_users_scrollY');
-        if (savedYStr) {
-          const targetY = parseInt(savedYStr, 10);
-          if (!isNaN(targetY) && targetY > 0) {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                window.scrollTo({ top: targetY, behavior: 'instant' });
-              });
-            });
-          }
-        }
-      } catch {}
-    }
-  }, [loading, users]);
 
   // Dismiss open action menu on ESC key
   useEffect(() => {
@@ -693,7 +657,10 @@ export default function AdminUsersPage() {
             <Pagination
               currentPage={page}
               totalPages={Math.ceil(total / 20)}
-              onPageChange={(p) => setPage(p)}
+              onPageChange={(p) => {
+                setPage(p);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             />
           </div>
         )}

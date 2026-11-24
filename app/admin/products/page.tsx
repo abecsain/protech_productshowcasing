@@ -113,7 +113,13 @@ export default function AdminProductsPage() {
   const [manageCategoriesSearch, setManageCategoriesSearch] = useState('');
   const [showCategoryDrawer, setShowCategoryDrawer] = useState(false);
   const isDrawerPoppedRef = useRef(false);
-  const hasRestoredScrollRef = useRef(false);
+
+  // Clear any legacy scroll position so page always opens cleanly at top
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('pte_admin_products_scrollY');
+    } catch {}
+  }, []);
 
   // Category Drawer browser Back button integration:
   // Pressing back on mobile closes the category drawer instead of navigating away!
@@ -143,48 +149,6 @@ export default function AdminProductsPage() {
       }
     };
   }, [showCategoryDrawer]);
-
-  // Track scroll position
-  useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    const handleScroll = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        if (window.scrollY > 0) {
-          sessionStorage.setItem('pte_admin_products_scrollY', String(Math.round(window.scrollY)));
-        }
-      }, 80);
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      clearTimeout(timeout);
-      if (window.scrollY > 0) {
-        sessionStorage.setItem('pte_admin_products_scrollY', String(Math.round(window.scrollY)));
-      }
-      window.removeEventListener('scroll', handleScroll);
-    };
-  }, []);
-
-  // Restore scroll position once products load
-  useEffect(() => {
-    if (!loading && products.length > 0 && !hasRestoredScrollRef.current) {
-      hasRestoredScrollRef.current = true;
-      try {
-        const savedYStr = sessionStorage.getItem('pte_admin_products_scrollY');
-        if (savedYStr) {
-          const targetY = parseInt(savedYStr, 10);
-          if (!isNaN(targetY) && targetY > 0) {
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                window.scrollTo({ top: targetY, behavior: 'instant' });
-              });
-            });
-          }
-        }
-      } catch {}
-    }
-  }, [loading, products]);
 
   // Close Category Three-Lines Drawer on ESC key
   useEffect(() => {
@@ -1144,7 +1108,10 @@ export default function AdminProductsPage() {
             <Pagination
               currentPage={page}
               totalPages={Math.ceil(total / 20)}
-              onPageChange={(p) => setPage(p)}
+              onPageChange={(p) => {
+                setPage(p);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
             />
           </div>
         )}

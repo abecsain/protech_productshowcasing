@@ -20,9 +20,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Close menu on route change
+  // Close menu on route change and ensure clean top scroll
   useEffect(() => {
     setMobileMenuOpen(false);
+    try {
+      sessionStorage.removeItem('pte_admin_products_scrollY');
+      sessionStorage.removeItem('pte_admin_users_scrollY');
+    } catch {}
   }, [pathname]);
 
   // Lock scroll when mobile menu is open
