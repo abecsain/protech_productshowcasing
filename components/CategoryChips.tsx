@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Menu, Search, Folder, Layers, X, ChevronRight, Check } from 'lucide-react';
 import Button from './ui/Button';
 import Input from './ui/Input';
@@ -181,26 +181,59 @@ export default function CategoryChips({
     );
   }
 
+  const [isScrolled, setIsScrolled] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      const scrolled = el.scrollLeft > 10;
+      setIsScrolled(scrolled);
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
   // Horizontal scroll chips with integrated 3-line drawer trigger
   return (
     <div className="flex items-center gap-2 w-full">
       {onOpenDrawer && (
-        <Button
-          variant="secondary"
-          size="sm"
+        <button
+          type="button"
           onClick={onOpenDrawer}
           aria-label="Open categories menu"
-          className="whitespace-nowrap shrink-0 flex items-center gap-1.5 px-3 py-1.5 font-semibold text-slate-800 bg-white hover:bg-slate-50 border-slate-300 shadow-xs"
+          title="Open categories menu"
+          className={`whitespace-nowrap shrink-0 flex items-center rounded-lg border border-slate-300 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 shadow-xs transition-all duration-300 ease-in-out cursor-pointer h-9 min-h-[36px] ${
+            isScrolled
+              ? 'w-9 min-w-[36px] px-0 justify-center gap-0'
+              : 'px-3 gap-1.5'
+          }`}
         >
-          <Menu size={18} strokeWidth={2.2} className="text-[#1D4ED8]" />
-          <span className="text-[13px]">Categories</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-[#1D4ED8] font-bold">
-            {categories.length}
-          </span>
-        </Button>
+          <Menu size={18} strokeWidth={2.2} className="text-[#1D4ED8] shrink-0" />
+          <div
+            className={`flex items-center gap-1.5 overflow-hidden transition-all duration-300 ease-in-out ${
+              isScrolled ? 'max-w-0 opacity-0 pointer-events-none' : 'max-w-[120px] opacity-100'
+            }`}
+          >
+            <span className="text-[13px] font-semibold text-slate-800">Categories</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-[#1D4ED8] font-bold shrink-0">
+              {categories.length}
+            </span>
+          </div>
+        </button>
       )}
 
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none py-1 flex-1 min-w-0">
+      <div
+        ref={scrollContainerRef}
+        onScroll={(e) => {
+          const scrolled = e.currentTarget.scrollLeft > 10;
+          if (scrolled !== isScrolled) setIsScrolled(scrolled);
+        }}
+        className="flex gap-2 overflow-x-auto pb-1 scrollbar-none py-1 flex-1 min-w-0"
+      >
         <Button
           variant={selectedCategory === null ? 'primary' : 'secondary'}
           size="sm"
