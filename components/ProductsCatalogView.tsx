@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { X, Search, Folder, Layers, ChevronRight, Check } from 'lucide-react';
+import { X, Search, Folder, Layers, ChevronRight, ChevronDown, Check } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
 import SearchBar from '@/components/ui/SearchBar';
 import Input from '@/components/ui/Input';
@@ -127,7 +127,17 @@ export default function ProductsCatalogView({
 
   const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [drawerSearch, setDrawerSearch] = useState('');
+  const [drawerExpandedIds, setDrawerExpandedIds] = useState<Set<number>>(new Set());
   const isDrawerPoppedRef = useRef(false);
+
+  const toggleDrawerExpand = (id: number) => {
+    setDrawerExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Category Drawer browser Back button integration
   useEffect(() => {
@@ -282,11 +292,29 @@ export default function ProductsCatalogView({
 
   const totalPages = Math.ceil(total / 24);
 
-  const filteredDrawerCategories = categories.filter((cat) => {
+  const isDrawerSearching = drawerSearch.trim().length > 0;
+  const filteredDrawerCategories = useMemo(() => {
     const q = drawerSearch.toLowerCase().trim();
-    if (!q) return true;
-    return cat.name.toLowerCase().includes(q) || cat.fullPath.toLowerCase().includes(q);
-  });
+    if (q) {
+      return categories.filter(
+        (cat) => cat.name.toLowerCase().includes(q) || cat.fullPath.toLowerCase().includes(q)
+      );
+    }
+    return categories.filter((cat) => {
+      if (cat.level === 1) return true;
+      if (cat.level === 2) return cat.parentId !== null && drawerExpandedIds.has(cat.parentId);
+      if (cat.level === 3) {
+        const parent = categories.find((p) => p.id === cat.parentId);
+        return Boolean(
+          parent &&
+            parent.parentId !== null &&
+            drawerExpandedIds.has(parent.parentId) &&
+            drawerExpandedIds.has(parent.id)
+        );
+      }
+      return false;
+    });
+  }, [categories, drawerSearch, drawerExpandedIds]);
 
   const activeBreadcrumbs = selectedCategory
     ? getCategoryAncestors(categories, selectedCategory)
@@ -528,38 +556,76 @@ export default function ProductsCatalogView({
 
               {filteredDrawerCategories.map((cat) => {
                 const isSelected = selectedCategory === cat.id;
+                const catHasChildren =
+                  !isDrawerSearching &&
+                  cat.level < 3 &&
+                  categories.some((c) => c.parentId === cat.id);
+                const isExpanded = drawerExpandedIds.has(cat.id);
+
                 return (
-                  <button
-                    key={cat.id}
-                    onClick={() => {
-                      handleCategorySelect(cat.id);
-                      setCategoryDrawerOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between py-2.5 rounded-lg text-xs font-medium transition-colors ${
-                      cat.level === 2 ? 'pl-6 pr-3' : cat.level === 3 ? 'pl-10 pr-3' : 'px-3'
-                    } ${
-                      isSelected
-                        ? 'bg-blue-50 text-[#1D4ED8] font-bold'
-                        : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 truncate pr-2">
-                      <ChevronRight
-                        size={13}
-                        className={isSelected ? 'text-[#1D4ED8]' : 'text-slate-400'}
-                      />
-                      <span className="truncate">
-                        {cat.level > 1 ? `↳ ${cat.name}` : cat.name}
-                      </span>
-                    </div>
-                    {isSelected ? (
-                      <Check size={14} className="text-[#1D4ED8] shrink-0" />
-                    ) : (
-                      <span className="text-[10px] text-slate-400 font-semibold bg-slate-100 px-1.5 py-0.5 rounded-full shrink-0">
-                        {cat.productCount ?? 0}
-                      </span>
+                  <React.Fragment key={cat.id}>
+                    <button
+                      onClick={() => {
+                        if (catHasChildren) {
+                          toggleDrawerExpand(cat.id);
+                        } else {
+                          handleCategorySelect(cat.id);
+                          setCategoryDrawerOpen(false);
+                        }
+                      }}
+                      className={`w-full flex items-center justify-between py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                        cat.level === 2 ? 'pl-6 pr-3' : cat.level === 3 ? 'pl-10 pr-3' : 'px-3'
+                      } ${
+                        isSelected
+                          ? 'bg-blue-50 text-[#1D4ED8] font-bold'
+                          : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        {catHasChildren ? (
+                          isExpanded ? (
+                            <ChevronDown size={14} className="text-[#1D4ED8] shrink-0" />
+                          ) : (
+                            <ChevronRight size={14} className="text-slate-400 shrink-0" />
+                          )
+                        ) : (
+                          <ChevronRight
+                            size={13}
+                            className={isSelected ? 'text-[#1D4ED8] shrink-0' : 'text-slate-300 shrink-0'}
+                          />
+                        )}
+                        <span className="truncate">
+                          {cat.level > 1 ? `↳ ${cat.name}` : cat.name}
+                        </span>
+                      </div>
+                      {isSelected ? (
+                        <Check size={14} className="text-[#1D4ED8] shrink-0" />
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-semibold bg-slate-100 px-1.5 py-0.5 rounded-full shrink-0">
+                          {cat.productCount ?? 0}
+                        </span>
+                      )}
+                    </button>
+
+                    {catHasChildren && isExpanded && (
+                      <button
+                        onClick={() => {
+                          handleCategorySelect(cat.id);
+                          setCategoryDrawerOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between py-2 rounded-lg text-[11.5px] font-semibold transition-colors ${
+                          cat.level === 1 ? 'pl-7 pr-3' : 'pl-11 pr-3'
+                        } ${
+                          isSelected
+                            ? 'bg-blue-50/90 text-[#1D4ED8]'
+                            : 'text-[#1D4ED8] hover:bg-blue-50/60'
+                        }`}
+                      >
+                        <span className="truncate">↳ All {cat.name}</span>
+                        {isSelected && <Check size={13} className="text-[#1D4ED8] shrink-0" />}
+                      </button>
                     )}
-                  </button>
+                  </React.Fragment>
                 );
               })}
 

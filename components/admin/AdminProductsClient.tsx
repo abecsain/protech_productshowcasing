@@ -17,6 +17,7 @@ import {
   Image as ImageIcon,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Calendar,
   Menu,
   Check,
@@ -135,7 +136,17 @@ export default function AdminProductsClient({
   const [showAddCategoryBar, setShowAddCategoryBar] = useState(false);
   const [manageCategoriesSearch, setManageCategoriesSearch] = useState('');
   const [showCategoryDrawer, setShowCategoryDrawer] = useState(false);
+  const [drawerExpandedIds, setDrawerExpandedIds] = useState<Set<number>>(new Set());
   const isDrawerPoppedRef = useRef(false);
+
+  const toggleDrawerExpand = (id: number) => {
+    setDrawerExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Clear any legacy scroll position so page always opens cleanly at top
   useEffect(() => {
@@ -881,11 +892,27 @@ export default function AdminProductsClient({
   const totalAllProducts = categories
     .filter((c) => c.level === 1 || !c.parentId)
     .reduce((sum, c) => sum + (c.productCount ?? 0), 0);
-  const filteredCategoryPills = categories.filter((c) =>
-    categoryFilterSearch.trim() === '' ||
-    c.name.toLowerCase().includes(categoryFilterSearch.toLowerCase().trim()) ||
-    (c.fullPath || '').toLowerCase().includes(categoryFilterSearch.toLowerCase().trim())
-  );
+  const isAdminDrawerSearching = categoryFilterSearch.trim().length > 0;
+  const filteredCategoryPills = isAdminDrawerSearching
+    ? categories.filter(
+        (c) =>
+          c.name.toLowerCase().includes(categoryFilterSearch.toLowerCase().trim()) ||
+          (c.fullPath || '').toLowerCase().includes(categoryFilterSearch.toLowerCase().trim())
+      )
+    : categories.filter((c) => {
+        if (c.level === 1) return true;
+        if (c.level === 2) return c.parentId !== null && drawerExpandedIds.has(c.parentId);
+        if (c.level === 3) {
+          const parent = categories.find((p) => p.id === c.parentId);
+          return Boolean(
+            parent &&
+              parent.parentId !== null &&
+              drawerExpandedIds.has(parent.parentId) &&
+              drawerExpandedIds.has(parent.id)
+          );
+        }
+        return false;
+      });
 
   // Derived 3-level filter chains for Admin Toolbar
   const mainCategories = categories.filter((c) => c.level === 1);
@@ -2677,53 +2704,97 @@ export default function AdminProductsClient({
               ) : (
                 filteredCategoryPills.map((cat) => {
                   const isSelected = selectedCatFilter === String(cat.id);
+                  const catHasChildren =
+                    !isAdminDrawerSearching &&
+                    cat.level < 3 &&
+                    categories.some((c) => c.parentId === cat.id);
+                  const isExpanded = drawerExpandedIds.has(cat.id);
+
                   return (
-                    <Button
-                      key={cat.id}
-                      variant="ghost"
-                      fullWidth
-                      size="sm"
-                      onClick={() => {
-                        setSelectedCatFilter(isSelected ? '' : String(cat.id));
-                        setPage(1);
-                        setShowCategoryDrawer(false);
-                      }}
-                      icon={
-                        <span
-                          className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-colors ${
-                            isSelected
-                              ? 'bg-[#1D4ED8] text-white'
-                              : 'bg-slate-100 text-slate-500 border border-slate-200 group-hover:bg-blue-50 group-hover:text-[#1D4ED8] group-hover:border-blue-200'
-                          }`}
-                        >
-                          {isSelected ? (
-                            <Check size={12} strokeWidth={2.5} />
-                          ) : (
-                            <Folder size={12} />
-                          )}
-                        </span>
-                      }
-                      className={`group !justify-between text-left h-10 !min-h-[40px] rounded-xl border transition-all ${
-                        cat.level === 2 ? '!pl-7 !pr-3' : cat.level === 3 ? '!pl-11 !pr-3' : '!px-3'
-                      } ${
-                        isSelected
-                          ? 'bg-blue-50/90 text-[#1D4ED8] font-bold border-blue-200 shadow-2xs'
-                          : 'bg-white hover:bg-slate-50 text-slate-700 font-medium border-slate-200/80 hover:border-slate-300'
-                      }`}
-                    >
-                      <span className="flex-1 truncate text-[13px] font-semibold text-left">
-                        {cat.level > 1 ? `↳ ${cat.name}` : cat.name}
-                      </span>
-                      <span
-                        className={`text-[11px] px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 ${
+                    <React.Fragment key={cat.id}>
+                      <Button
+                        variant="ghost"
+                        fullWidth
+                        size="sm"
+                        onClick={() => {
+                          if (catHasChildren) {
+                            toggleDrawerExpand(cat.id);
+                          } else {
+                            setSelectedCatFilter(isSelected ? '' : String(cat.id));
+                            setPage(1);
+                            setShowCategoryDrawer(false);
+                          }
+                        }}
+                        icon={
+                          <span
+                            className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-colors ${
+                              isSelected
+                                ? 'bg-[#1D4ED8] text-white'
+                                : isExpanded
+                                ? 'bg-blue-50 text-[#1D4ED8] border border-blue-200'
+                                : 'bg-slate-100 text-slate-500 border border-slate-200 group-hover:bg-blue-50 group-hover:text-[#1D4ED8] group-hover:border-blue-200'
+                            }`}
+                          >
+                            {catHasChildren ? (
+                              isExpanded ? (
+                                <ChevronDown size={13} strokeWidth={2.5} />
+                              ) : (
+                                <ChevronRight size={13} strokeWidth={2.5} />
+                              )
+                            ) : isSelected ? (
+                              <Check size={12} strokeWidth={2.5} />
+                            ) : (
+                              <Folder size={12} />
+                            )}
+                          </span>
+                        }
+                        className={`group !justify-between text-left h-10 !min-h-[40px] rounded-xl border transition-all ${
+                          cat.level === 2 ? '!pl-7 !pr-3' : cat.level === 3 ? '!pl-11 !pr-3' : '!px-3'
+                        } ${
                           isSelected
-                            ? 'bg-blue-100 text-[#1D4ED8]'
-                            : 'bg-slate-100 text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-700'
+                            ? 'bg-blue-50/90 text-[#1D4ED8] font-bold border-blue-200 shadow-2xs'
+                            : 'bg-white hover:bg-slate-50 text-slate-700 font-medium border-slate-200/80 hover:border-slate-300'
                         }`}
                       >
-                        {cat.productCount ?? 0}
-                      </span>
-                    </Button>
+                        <span className="flex-1 truncate text-[13px] font-semibold text-left">
+                          {cat.level > 1 ? `↳ ${cat.name}` : cat.name}
+                        </span>
+                        <span
+                          className={`text-[11px] px-2 py-0.5 rounded-full font-bold shrink-0 ml-2 ${
+                            isSelected
+                              ? 'bg-blue-100 text-[#1D4ED8]'
+                              : 'bg-slate-100 text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-700'
+                          }`}
+                        >
+                          {cat.productCount ?? 0}
+                        </span>
+                      </Button>
+
+                      {catHasChildren && isExpanded && (
+                        <Button
+                          variant="ghost"
+                          fullWidth
+                          size="sm"
+                          onClick={() => {
+                            setSelectedCatFilter(isSelected ? '' : String(cat.id));
+                            setPage(1);
+                            setShowCategoryDrawer(false);
+                          }}
+                          className={`!justify-between text-left h-9 !min-h-[36px] rounded-lg border transition-all ${
+                            cat.level === 1 ? '!pl-8 !pr-3' : '!pl-12 !pr-3'
+                          } ${
+                            isSelected
+                              ? 'bg-blue-50 text-[#1D4ED8] font-bold border-blue-200'
+                              : 'bg-blue-50/40 hover:bg-blue-50 text-[#1D4ED8] font-semibold border-blue-100'
+                          }`}
+                        >
+                          <span className="flex-1 truncate text-[12px] text-left">
+                            ↳ All {cat.name}
+                          </span>
+                          {isSelected && <Check size={13} className="text-[#1D4ED8] shrink-0" />}
+                        </Button>
+                      )}
+                    </React.Fragment>
                   );
                 })
               )}
