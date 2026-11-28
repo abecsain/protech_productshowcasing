@@ -1680,50 +1680,6 @@ export default function AdminProductsClient({
               />
             )}
 
-            {addingSubForParent && (
-              <form
-                onSubmit={handleCreateSubCategory}
-                className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-blue-900 truncate">
-                    New {addingSubForParent.level === 1 ? 'Sub-Category (Level 2)' : 'Sub-Sub Category (Level 3)'} under &ldquo;{addingSubForParent.name}&rdquo;
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setAddingSubForParent(null);
-                      setSubCategoryName('');
-                    }}
-                    className="h-6 px-1.5 text-xs text-slate-500"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={subCategoryName}
-                    onChange={(e) => setSubCategoryName(e.target.value)}
-                    placeholder="Enter sub-category name..."
-                    className="h-9 text-xs flex-1"
-                    autoFocus
-                  />
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    loading={creatingSubCategory}
-                    disabled={!subCategoryName.trim()}
-                    className="h-9 shrink-0"
-                  >
-                    Add
-                  </Button>
-                </div>
-              </form>
-            )}
-
             <div className="divide-y divide-slate-100 max-h-[58vh] overflow-y-auto pr-1">
               {categories
                 .filter(
@@ -1733,87 +1689,140 @@ export default function AdminProductsClient({
                     cat.fullPath.toLowerCase().includes(manageCategoriesSearch.toLowerCase().trim())
                 )
                 .map((cat) => (
-                <div
-                  key={cat.id}
-                  className={`py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-3 ${
-                    cat.level === 2
-                      ? 'pl-3 sm:pl-5 border-l-2 border-blue-200'
-                      : cat.level === 3
-                      ? 'pl-6 sm:pl-10 border-l-2 border-slate-200'
-                      : ''
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start sm:items-center justify-between sm:justify-start gap-2">
-                      <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-initial">
-                        {cat.level > 1 && (
-                          <span className="text-slate-400 text-xs shrink-0">↳</span>
-                        )}
-                        <p className="text-[13.5px] sm:text-sm font-bold text-slate-900 leading-snug break-words">
-                          {cat.name}
-                        </p>
+                <React.Fragment key={cat.id}>
+                  <div
+                    className={`py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-3 ${
+                      cat.level === 2
+                        ? 'pl-3 sm:pl-5 border-l-2 border-blue-200'
+                        : cat.level === 3
+                        ? 'pl-6 sm:pl-10 border-l-2 border-slate-200'
+                        : ''
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start sm:items-center justify-between sm:justify-start gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-initial">
+                          {cat.level > 1 && (
+                            <span className="text-slate-400 text-xs shrink-0">↳</span>
+                          )}
+                          <p className="text-[13.5px] sm:text-sm font-bold text-slate-900 leading-snug break-words">
+                            {cat.name}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                              cat.level === 1
+                                ? 'bg-blue-50 text-[#1D4ED8]'
+                                : cat.level === 2
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {cat.level === 1 ? 'Main' : cat.level === 2 ? 'Sub' : 'L3'}
+                          </span>
+                          <span className="text-[11px] text-slate-500 whitespace-nowrap sm:hidden">
+                            • {cat.productCount ?? 0}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                            cat.level === 1
-                              ? 'bg-blue-50 text-[#1D4ED8]'
-                              : cat.level === 2
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {cat.level === 1 ? 'Main' : cat.level === 2 ? 'Sub' : 'L3'}
-                        </span>
-                        <span className="text-[11px] text-slate-500 whitespace-nowrap sm:hidden">
-                          • {cat.productCount ?? 0}
-                        </span>
-                      </div>
+                      <p className="hidden sm:block text-xs text-slate-500 mt-0.5">
+                        {cat.productCount ?? 0} {cat.productCount === 1 ? 'product' : 'products'}
+                      </p>
                     </div>
-                    <p className="hidden sm:block text-xs text-slate-500 mt-0.5">
-                      {cat.productCount ?? 0} {cat.productCount === 1 ? 'product' : 'products'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                    {cat.level < 3 && (
+                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                      {cat.level < 3 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setAddingSubForParent(cat);
+                            setSubCategoryName('');
+                          }}
+                          className="text-emerald-700 hover:text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/70 text-xs h-8 !min-h-[32px] px-2.5 border border-emerald-200/80 rounded-lg whitespace-nowrap"
+                          icon={<Plus size={13} />}
+                        >
+                          Sub
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          setAddingSubForParent(cat);
-                          setSubCategoryName('');
+                          handleOpenEditCategory(cat);
                         }}
-                        className="text-emerald-700 hover:text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/70 text-xs h-8 !min-h-[32px] px-2.5 border border-emerald-200/80 rounded-lg whitespace-nowrap"
-                        icon={<Plus size={13} />}
+                        className="text-[#1D4ED8] hover:text-[#1E40AF] bg-blue-50/70 hover:bg-blue-100/70 text-xs h-8 !min-h-[32px] px-2.5 border border-blue-200/80 rounded-lg whitespace-nowrap"
+                        icon={<Edit2 size={13} />}
                       >
-                        Sub
+                        Rename
                       </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        handleOpenEditCategory(cat);
-                      }}
-                      className="text-[#1D4ED8] hover:text-[#1E40AF] bg-blue-50/70 hover:bg-blue-100/70 text-xs h-8 !min-h-[32px] px-2.5 border border-blue-200/80 rounded-lg whitespace-nowrap"
-                      icon={<Edit2 size={13} />}
-                    >
-                      Rename
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowManageCategoriesModal(false);
-                        handleOpenDeleteCategory(cat);
-                      }}
-                      className="text-red-600 hover:text-red-700 bg-red-50/70 hover:bg-red-100/70 text-xs h-8 !min-h-[32px] px-2.5 border border-red-200/80 rounded-lg whitespace-nowrap"
-                      icon={<Trash2 size={13} />}
-                    >
-                      Delete
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowManageCategoriesModal(false);
+                          handleOpenDeleteCategory(cat);
+                        }}
+                        className="text-red-600 hover:text-red-700 bg-red-50/70 hover:bg-red-100/70 text-xs h-8 !min-h-[32px] px-2.5 border border-red-200/80 rounded-lg whitespace-nowrap"
+                        icon={<Trash2 size={13} />}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
-                </div>
+
+                  {addingSubForParent?.id === cat.id && (
+                    <div
+                      className={`py-2.5 ${
+                        cat.level === 1
+                          ? 'pl-3 sm:pl-5 border-l-2 border-blue-400'
+                          : 'pl-6 sm:pl-10 border-l-2 border-emerald-400'
+                      }`}
+                    >
+                      <form
+                        onSubmit={handleCreateSubCategory}
+                        className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-blue-900 truncate">
+                            ↳ New {cat.level === 1 ? 'Sub-Category (Level 2)' : 'Sub-Sub Category (Level 3)'} under &ldquo;{cat.name}&rdquo;
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setAddingSubForParent(null);
+                              setSubCategoryName('');
+                            }}
+                            className="h-6 px-1.5 text-xs text-slate-500 shrink-0"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={subCategoryName}
+                            onChange={(e) => setSubCategoryName(e.target.value)}
+                            placeholder={cat.level === 1 ? 'Enter sub-category name...' : 'Enter sub-sub category name...'}
+                            className="h-9 text-xs flex-1"
+                            autoFocus
+                          />
+                          <Button
+                            type="submit"
+                            variant="primary"
+                            size="sm"
+                            loading={creatingSubCategory}
+                            disabled={!subCategoryName.trim()}
+                            className="h-9 shrink-0"
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      </form>
+                    </div>
+                  )}
+                </React.Fragment>
               ))}
             </div>
 
@@ -2087,230 +2096,244 @@ export default function AdminProductsClient({
                   </span>
                 </div>
 
-                <div className="space-y-2.5">
-                  {/* Level 1: Main Category */}
-                  <div className="grid grid-cols-1 sm:grid-cols-[145px_1fr_92px] sm:items-center gap-1.5 sm:gap-2.5">
-                    <div className="flex items-center justify-between sm:block">
-                      <label className="text-[13px] font-medium text-slate-700 whitespace-nowrap">
-                        Main Category <span className="text-red-600">*</span>
-                      </label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setInlineParentCategoryId(null);
-                          setShowInlineNewCategory(true);
-                          setInlineCategoryError('');
-                        }}
-                        className="sm:hidden text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-blue-50 text-[11px] h-6 px-1.5 font-semibold"
-                        icon={<Plus size={12} />}
-                      >
-                        New
-                      </Button>
-                    </div>
-                    <Select
-                      required
-                      aria-label="Category"
-                      value={formLevel1Id}
-                      onChange={(e) => setFormCategoryId(e.target.value ? Number(e.target.value) : '')}
-                      options={[
-                        { value: '', label: 'Select main category...' },
-                        ...mainCategories.map((c) => ({ value: c.id, label: c.name })),
-                      ]}
-                    />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setInlineParentCategoryId(null);
-                        setShowInlineNewCategory(true);
-                        setInlineCategoryError('');
-                      }}
-                      className="hidden sm:inline-flex text-[#1D4ED8] border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 text-xs h-11 font-semibold whitespace-nowrap justify-center"
-                      icon={<Plus size={13} />}
-                    >
-                      New
-                    </Button>
-                  </div>
-
-                  {/* Level 2: Sub Category */}
-                  <div className="grid grid-cols-1 sm:grid-cols-[145px_1fr_92px] sm:items-center gap-1.5 sm:gap-2.5">
-                    <div className="flex items-center justify-between sm:block">
-                      <label className="text-[13px] font-medium text-slate-700 whitespace-nowrap">
-                        Sub Category <span className="text-slate-400 text-[11px]">(Opt.)</span>
-                      </label>
-                      {formLevel1Id && (
+                {(() => {
+                  const renderInlineCategoryBox = (placeholder: string) => (
+                    <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-blue-900">
+                          {inlineParentCategoryId
+                            ? `Create Sub-Category under "${categories.find((c) => c.id === inlineParentCategoryId)?.fullPath || 'Parent'}"`
+                            : 'Create New Main Category'}
+                        </span>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setInlineParentCategoryId(Number(formLevel1Id));
-                            setShowInlineNewCategory(true);
+                            setShowInlineNewCategory(false);
+                            setInlineParentCategoryId(null);
+                            setInlineCategoryName('');
                             setInlineCategoryError('');
                           }}
-                          className="sm:hidden text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-blue-50 text-[11px] h-6 px-1.5 font-semibold"
-                          icon={<Plus size={12} />}
+                          className="text-slate-500 hover:text-slate-700 h-6 px-1.5 text-xs"
                         >
-                          Add Sub
+                          Cancel
                         </Button>
-                      )}
-                    </div>
-                    <Select
-                      aria-label="Sub Category"
-                      disabled={!formLevel1Id}
-                      value={formLevel2Id}
-                      onChange={(e) => {
-                        const val = e.target.value ? Number(e.target.value) : null;
-                        setFormCategoryId(val || (formLevel1Id ? Number(formLevel1Id) : ''));
-                      }}
-                      options={[
-                        { value: '', label: formLevel1Id ? 'None (use Main)' : 'Select main first...' },
-                        ...formLevel2Options.map((c) => ({ value: c.id, label: c.name })),
-                      ]}
-                    />
-                    {formLevel1Id ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setInlineParentCategoryId(Number(formLevel1Id));
-                          setShowInlineNewCategory(true);
-                          setInlineCategoryError('');
-                        }}
-                        className="hidden sm:inline-flex text-[#1D4ED8] border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 text-xs h-11 font-semibold whitespace-nowrap justify-center"
-                        icon={<Plus size={13} />}
-                      >
-                        Add Sub
-                      </Button>
-                    ) : (
-                      <div className="hidden sm:block" />
-                    )}
-                  </div>
-
-                  {/* Level 3: Sub-Sub Category */}
-                  <div className="grid grid-cols-1 sm:grid-cols-[145px_1fr_92px] sm:items-center gap-1.5 sm:gap-2.5">
-                    <div className="flex items-center justify-between sm:block">
-                      <label className="text-[13px] font-medium text-slate-700 whitespace-nowrap">
-                        Sub-Sub <span className="text-slate-400 text-[11px]">(Opt.)</span>
-                      </label>
-                      {formLevel2Id && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setInlineParentCategoryId(Number(formLevel2Id));
-                            setShowInlineNewCategory(true);
-                            setInlineCategoryError('');
-                          }}
-                          className="sm:hidden text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-blue-50 text-[11px] h-6 px-1.5 font-semibold"
-                          icon={<Plus size={12} />}
-                        >
-                          Add Sub
-                        </Button>
-                      )}
-                    </div>
-                    <Select
-                      aria-label="Sub-Sub Category"
-                      disabled={!formLevel2Id}
-                      value={formLevel3Id}
-                      onChange={(e) => {
-                        const val = e.target.value ? Number(e.target.value) : null;
-                        setFormCategoryId(val || (formLevel2Id ? Number(formLevel2Id) : ''));
-                      }}
-                      options={[
-                        { value: '', label: formLevel2Id ? 'None (use Sub)' : 'Select sub first...' },
-                        ...formLevel3Options.map((c) => ({ value: c.id, label: c.name })),
-                      ]}
-                    />
-                    {formLevel2Id ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setInlineParentCategoryId(Number(formLevel2Id));
-                          setShowInlineNewCategory(true);
-                          setInlineCategoryError('');
-                        }}
-                        className="hidden sm:inline-flex text-[#1D4ED8] border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 text-xs h-11 font-semibold whitespace-nowrap justify-center"
-                        icon={<Plus size={13} />}
-                      >
-                        Add Sub
-                      </Button>
-                    ) : (
-                      <div className="hidden sm:block" />
-                    )}
-                  </div>
-                </div>
-
-                {showInlineNewCategory && (
-                  <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-blue-900">
-                        {inlineParentCategoryId
-                          ? `Create Sub-Category under "${categories.find((c) => c.id === inlineParentCategoryId)?.fullPath || 'Parent'}"`
-                          : 'Create New Main Category'}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setShowInlineNewCategory(false);
-                          setInlineParentCategoryId(null);
-                          setInlineCategoryName('');
-                          setInlineCategoryError('');
-                        }}
-                        className="text-slate-500 hover:text-slate-700 h-6 px-1.5 text-xs"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                      <div className="flex-1">
-                        <Input
-                          placeholder={inlineParentCategoryId ? 'e.g. Gaming Laptops' : 'e.g. Smart Watches'}
-                          value={inlineCategoryName}
-                          onChange={(e) => {
-                            setInlineCategoryName(e.target.value);
-                            if (inlineCategoryError) setInlineCategoryError('');
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleCreateInlineCategory();
-                            } else if (e.key === 'Escape') {
-                              setShowInlineNewCategory(false);
-                            }
-                          }}
-                          className="h-10 text-sm"
-                        />
                       </div>
-                      <Button
-                        type="button"
-                        variant="primary"
-                        size="sm"
-                        onClick={handleCreateInlineCategory}
-                        loading={creatingInlineCategory}
-                        loadingText="Adding..."
-                        disabled={!inlineCategoryName.trim()}
-                        className="shrink-0"
-                      >
-                        Save & Select
-                      </Button>
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <div className="flex-1">
+                          <Input
+                            placeholder={placeholder}
+                            value={inlineCategoryName}
+                            onChange={(e) => {
+                              setInlineCategoryName(e.target.value);
+                              if (inlineCategoryError) setInlineCategoryError('');
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleCreateInlineCategory();
+                              } else if (e.key === 'Escape') {
+                                setShowInlineNewCategory(false);
+                              }
+                            }}
+                            className="h-10 text-sm"
+                            autoFocus
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="sm"
+                          onClick={handleCreateInlineCategory}
+                          loading={creatingInlineCategory}
+                          loadingText="Adding..."
+                          disabled={!inlineCategoryName.trim()}
+                          className="shrink-0"
+                        >
+                          Save & Select
+                        </Button>
+                      </div>
+                      {inlineCategoryError && (
+                        <p className="text-xs text-red-600 font-medium">
+                          {inlineCategoryError}
+                        </p>
+                      )}
                     </div>
-                    {inlineCategoryError && (
-                      <p className="text-xs text-red-600 font-medium">
-                        {inlineCategoryError}
-                      </p>
-                    )}
-                  </div>
-                )}
+                  );
+
+                  return (
+                    <div className="space-y-2.5">
+                      {/* Level 1: Main Category */}
+                      <div className="grid grid-cols-1 sm:grid-cols-[145px_1fr_92px] sm:items-center gap-1.5 sm:gap-2.5">
+                        <div className="flex items-center justify-between sm:block">
+                          <label className="text-[13px] font-medium text-slate-700 whitespace-nowrap">
+                            Main Category <span className="text-red-600">*</span>
+                          </label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setInlineParentCategoryId(null);
+                              setShowInlineNewCategory(true);
+                              setInlineCategoryError('');
+                            }}
+                            className="sm:hidden text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-blue-50 text-[11px] h-6 px-1.5 font-semibold"
+                            icon={<Plus size={12} />}
+                          >
+                            New
+                          </Button>
+                        </div>
+                        <Select
+                          required
+                          aria-label="Category"
+                          value={formLevel1Id}
+                          onChange={(e) => setFormCategoryId(e.target.value ? Number(e.target.value) : '')}
+                          options={[
+                            { value: '', label: 'Select main category...' },
+                            ...mainCategories.map((c) => ({ value: c.id, label: c.name })),
+                          ]}
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setInlineParentCategoryId(null);
+                            setShowInlineNewCategory(true);
+                            setInlineCategoryError('');
+                          }}
+                          className="hidden sm:inline-flex text-[#1D4ED8] border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 text-xs h-11 font-semibold whitespace-nowrap justify-center"
+                          icon={<Plus size={13} />}
+                        >
+                          New
+                        </Button>
+                      </div>
+
+                      {showInlineNewCategory && inlineParentCategoryId === null &&
+                        renderInlineCategoryBox('e.g. Smart Watches')}
+
+                      {/* Level 2: Sub Category */}
+                      <div className="grid grid-cols-1 sm:grid-cols-[145px_1fr_92px] sm:items-center gap-1.5 sm:gap-2.5">
+                        <div className="flex items-center justify-between sm:block">
+                          <label className="text-[13px] font-medium text-slate-700 whitespace-nowrap">
+                            Sub Category <span className="text-slate-400 text-[11px]">(Opt.)</span>
+                          </label>
+                          {formLevel1Id && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setInlineParentCategoryId(Number(formLevel1Id));
+                                setShowInlineNewCategory(true);
+                                setInlineCategoryError('');
+                              }}
+                              className="sm:hidden text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-blue-50 text-[11px] h-6 px-1.5 font-semibold"
+                              icon={<Plus size={12} />}
+                            >
+                              Add Sub
+                            </Button>
+                          )}
+                        </div>
+                        <Select
+                          aria-label="Sub Category"
+                          disabled={!formLevel1Id}
+                          value={formLevel2Id}
+                          onChange={(e) => {
+                            const val = e.target.value ? Number(e.target.value) : null;
+                            setFormCategoryId(val || (formLevel1Id ? Number(formLevel1Id) : ''));
+                          }}
+                          options={[
+                            { value: '', label: formLevel1Id ? 'None (use Main)' : 'Select main first...' },
+                            ...formLevel2Options.map((c) => ({ value: c.id, label: c.name })),
+                          ]}
+                        />
+                        {formLevel1Id ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setInlineParentCategoryId(Number(formLevel1Id));
+                              setShowInlineNewCategory(true);
+                              setInlineCategoryError('');
+                            }}
+                            className="hidden sm:inline-flex text-[#1D4ED8] border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 text-xs h-11 font-semibold whitespace-nowrap justify-center"
+                            icon={<Plus size={13} />}
+                          >
+                            Add Sub
+                          </Button>
+                        ) : (
+                          <div className="hidden sm:block" />
+                        )}
+                      </div>
+
+                      {showInlineNewCategory && formLevel1Id && inlineParentCategoryId === Number(formLevel1Id) &&
+                        renderInlineCategoryBox('e.g. Gaming Laptops')}
+
+                      {/* Level 3: Sub-Sub Category */}
+                      <div className="grid grid-cols-1 sm:grid-cols-[145px_1fr_92px] sm:items-center gap-1.5 sm:gap-2.5">
+                        <div className="flex items-center justify-between sm:block">
+                          <label className="text-[13px] font-medium text-slate-700 whitespace-nowrap">
+                            Sub-Sub <span className="text-slate-400 text-[11px]">(Opt.)</span>
+                          </label>
+                          {formLevel2Id && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setInlineParentCategoryId(Number(formLevel2Id));
+                                setShowInlineNewCategory(true);
+                                setInlineCategoryError('');
+                              }}
+                              className="sm:hidden text-[#1D4ED8] hover:text-[#1E40AF] hover:bg-blue-50 text-[11px] h-6 px-1.5 font-semibold"
+                              icon={<Plus size={12} />}
+                            >
+                              Add Sub
+                            </Button>
+                          )}
+                        </div>
+                        <Select
+                          aria-label="Sub-Sub Category"
+                          disabled={!formLevel2Id}
+                          value={formLevel3Id}
+                          onChange={(e) => {
+                            const val = e.target.value ? Number(e.target.value) : null;
+                            setFormCategoryId(val || (formLevel2Id ? Number(formLevel2Id) : ''));
+                          }}
+                          options={[
+                            { value: '', label: formLevel2Id ? 'None (use Sub)' : 'Select sub first...' },
+                            ...formLevel3Options.map((c) => ({ value: c.id, label: c.name })),
+                          ]}
+                        />
+                        {formLevel2Id ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setInlineParentCategoryId(Number(formLevel2Id));
+                              setShowInlineNewCategory(true);
+                              setInlineCategoryError('');
+                            }}
+                            className="hidden sm:inline-flex text-[#1D4ED8] border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 text-xs h-11 font-semibold whitespace-nowrap justify-center"
+                            icon={<Plus size={13} />}
+                          >
+                            Add Sub
+                          </Button>
+                        ) : (
+                          <div className="hidden sm:block" />
+                        )}
+                      </div>
+
+                      {showInlineNewCategory && formLevel2Id && inlineParentCategoryId === Number(formLevel2Id) &&
+                        renderInlineCategoryBox('e.g. 16GB RAM')}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="sm:col-span-2">
