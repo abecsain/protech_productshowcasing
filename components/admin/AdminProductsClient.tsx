@@ -146,7 +146,17 @@ export default function AdminProductsClient({
   const [categoryFilterSearch, setCategoryFilterSearch] = useState('');
   const [showAddCategoryBar, setShowAddCategoryBar] = useState(false);
   const [manageCategoriesSearch, setManageCategoriesSearch] = useState('');
+  const [manageExpandedIds, setManageExpandedIds] = useState<Set<number>>(new Set());
   const [showCategoryDrawer, setShowCategoryDrawer] = useState(false);
+
+  const toggleManageExpand = (id: number) => {
+    setManageExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   const [drawerExpandedIds, setDrawerExpandedIds] = useState<Set<number>>(new Set());
   const isDrawerPoppedRef = useRef(false);
 
@@ -1740,151 +1750,211 @@ export default function AdminProductsClient({
               />
             )}
 
-            <div className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto pr-2">
-              {categories
-                .filter(
-                  (cat) =>
-                    !manageCategoriesSearch.trim() ||
-                    cat.name.toLowerCase().includes(manageCategoriesSearch.toLowerCase().trim()) ||
-                    cat.fullPath.toLowerCase().includes(manageCategoriesSearch.toLowerCase().trim())
-                )
-                .map((cat) => (
-                <React.Fragment key={cat.id}>
-                  <div
-                    className={`py-2.5 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 ${
-                      cat.level === 2
-                        ? 'pl-2.5 sm:pl-5 border-l-2 border-blue-200'
-                        : cat.level === 3
-                        ? 'pl-5 sm:pl-10 border-l-2 border-slate-200'
-                        : ''
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between sm:justify-start gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-initial">
-                          {cat.level > 1 && (
-                            <span className="text-slate-400 text-xs shrink-0">↳</span>
-                          )}
-                          <p className="text-[13.5px] sm:text-sm font-bold text-slate-900 leading-snug break-words">
-                            {cat.name}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span
-                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                              cat.level === 1
-                                ? 'bg-blue-50 text-[#1D4ED8]'
-                                : cat.level === 2
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {cat.level === 1 ? 'Main' : cat.level === 2 ? 'Sub' : 'L3'}
-                          </span>
-                          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full whitespace-nowrap sm:hidden">
-                            {cat.productCount ?? 0}
-                          </span>
+            <div className="space-y-2 max-h-[62vh] overflow-y-auto pr-1.5">
+              {(() => {
+                const q = manageCategoriesSearch.toLowerCase().trim();
+                const isSearching = q.length > 0;
+                const visibleCats = isSearching
+                  ? categories.filter(
+                      (cat) =>
+                        cat.name.toLowerCase().includes(q) ||
+                        cat.fullPath.toLowerCase().includes(q)
+                    )
+                  : categories.filter((cat) => {
+                      if (cat.level === 1) return true;
+                      if (cat.level === 2) {
+                        return cat.parentId !== null && manageExpandedIds.has(cat.parentId);
+                      }
+                      if (cat.level === 3) {
+                        const parent = categories.find((p) => p.id === cat.parentId);
+                        return Boolean(
+                          parent &&
+                            parent.parentId !== null &&
+                            manageExpandedIds.has(parent.parentId) &&
+                            manageExpandedIds.has(parent.id)
+                        );
+                      }
+                      return false;
+                    });
+
+                if (visibleCats.length === 0) {
+                  return (
+                    <div className="py-8 text-center text-xs text-slate-400">
+                      No categories found.
+                    </div>
+                  );
+                }
+
+                return visibleCats.map((cat) => {
+                  const childCount = categories.filter((c) => c.parentId === cat.id).length;
+                  const hasChildren = !isSearching && cat.level < 3 && childCount > 0;
+                  const isExpanded = manageExpandedIds.has(cat.id);
+
+                  const rowClasses =
+                    cat.level === 1
+                      ? 'bg-white border border-slate-200 rounded-xl px-3 py-2.5 shadow-2xs'
+                      : cat.level === 2
+                      ? 'ml-3 sm:ml-5 bg-slate-50/90 border border-slate-200/80 border-l-[3px] border-l-blue-500 rounded-lg px-2.5 py-2'
+                      : 'ml-6 sm:ml-10 bg-white border border-slate-200/80 border-l-[3px] border-l-emerald-500 rounded-lg px-2.5 py-2';
+
+                  return (
+                    <React.Fragment key={cat.id}>
+                      <div className={rowClasses}>
+                        <div className="flex items-center justify-between gap-2">
+                          {/* Left: Drawer Toggle + Name + Level/Count */}
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {hasChildren ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleManageExpand(cat.id)}
+                                aria-label={isExpanded ? `Collapse ${cat.name}` : `Expand ${cat.name}`}
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border transition-colors cursor-pointer ${
+                                  isExpanded
+                                    ? 'bg-blue-50 text-[#1D4ED8] border-blue-300'
+                                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-[#1D4ED8] hover:text-[#1D4ED8]'
+                                }`}
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown size={14} strokeWidth={2.5} />
+                                ) : (
+                                  <ChevronRight size={14} strokeWidth={2.5} />
+                                )}
+                              </button>
+                            ) : (
+                              <span
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                                  cat.level === 1
+                                    ? 'bg-blue-50 text-[#1D4ED8]'
+                                    : cat.level === 2
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : 'bg-slate-100 text-slate-500'
+                                }`}
+                              >
+                                {cat.level === 1 ? 'M' : cat.level === 2 ? 'S' : 'L3'}
+                              </span>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => hasChildren && toggleManageExpand(cat.id)}
+                              className={`min-w-0 flex-1 text-left ${hasChildren ? 'cursor-pointer' : 'cursor-default'}`}
+                            >
+                              <p className="text-[13px] sm:text-sm font-bold text-slate-900 leading-tight truncate">
+                                {cat.name}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span
+                                  className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                    cat.level === 1
+                                      ? 'bg-blue-50 text-[#1D4ED8]'
+                                      : cat.level === 2
+                                      ? 'bg-emerald-50 text-emerald-700'
+                                      : 'bg-slate-100 text-slate-600'
+                                  }`}
+                                >
+                                  {cat.level === 1 ? 'Main' : cat.level === 2 ? 'Sub' : 'L3'}
+                                </span>
+                                <span className="text-[10.5px] text-slate-500 font-medium">
+                                  {cat.productCount ?? 0} {cat.productCount === 1 ? 'prod' : 'prods'}
+                                </span>
+                                {childCount > 0 && (
+                                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-50/80 px-1.5 py-0.2 rounded">
+                                    {childCount} {cat.level === 1 ? 'sub' : 'L3'}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          </div>
+
+                          {/* Right: Compact Action Controls */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            {cat.level < 3 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setManageExpandedIds((prev) => new Set(prev).add(cat.id));
+                                  setAddingSubForParent(cat);
+                                  setSubCategoryName('');
+                                }}
+                                title="Add Sub-Category"
+                                className="inline-flex items-center justify-center gap-0.5 text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 text-[11px] font-semibold h-8 px-2 border border-emerald-200 rounded-lg whitespace-nowrap transition-colors cursor-pointer"
+                              >
+                                <Plus size={12} />
+                                <span>Sub</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditCategory(cat)}
+                              aria-label={`Rename ${cat.name}`}
+                              title="Rename"
+                              className="inline-flex items-center justify-center text-[#1D4ED8] hover:text-[#1E40AF] bg-blue-50 hover:bg-blue-100 w-8 h-8 border border-blue-200 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowManageCategoriesModal(false);
+                                handleOpenDeleteCategory(cat);
+                              }}
+                              aria-label={`Delete ${cat.name}`}
+                              title="Delete"
+                              className="inline-flex items-center justify-center text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 w-8 h-8 border border-red-200 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      <p className="hidden sm:block text-xs text-slate-500 mt-0.5">
-                        {cat.productCount ?? 0} {cat.productCount === 1 ? 'product' : 'products'}
-                      </p>
-                    </div>
-                    <div
-                      className={`grid gap-1.5 w-full sm:w-auto sm:flex sm:items-center shrink-0 ${
-                        cat.level < 3 ? 'grid-cols-3' : 'grid-cols-2'
-                      }`}
-                    >
-                      {cat.level < 3 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAddingSubForParent(cat);
-                            setSubCategoryName('');
-                          }}
-                          className="inline-flex items-center justify-center gap-1 text-emerald-700 hover:text-emerald-800 bg-emerald-50/80 hover:bg-emerald-100/80 text-xs font-semibold h-8 px-2.5 border border-emerald-200 rounded-lg whitespace-nowrap transition-colors cursor-pointer"
-                        >
-                          <Plus size={13} />
-                          <span>Sub</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleOpenEditCategory(cat);
-                        }}
-                        className="inline-flex items-center justify-center gap-1 text-[#1D4ED8] hover:text-[#1E40AF] bg-blue-50/80 hover:bg-blue-100/80 text-xs font-semibold h-8 px-2.5 border border-blue-200 rounded-lg whitespace-nowrap transition-colors cursor-pointer"
-                      >
-                        <Edit2 size={12} />
-                        <span>Rename</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowManageCategoriesModal(false);
-                          handleOpenDeleteCategory(cat);
-                        }}
-                        className="inline-flex items-center justify-center gap-1 text-red-600 hover:text-red-700 bg-red-50/80 hover:bg-red-100/80 text-xs font-semibold h-8 px-2.5 border border-red-200 rounded-lg whitespace-nowrap transition-colors cursor-pointer"
-                      >
-                        <Trash2 size={12} />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-                  </div>
 
-                  {addingSubForParent?.id === cat.id && (
-                    <div
-                      className={`py-2.5 ${
-                        cat.level === 1
-                          ? 'pl-3 sm:pl-5 border-l-2 border-blue-400'
-                          : 'pl-6 sm:pl-10 border-l-2 border-emerald-400'
-                      }`}
-                    >
-                      <form
-                        onSubmit={handleCreateSubCategory}
-                        className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-bold text-blue-900 truncate">
-                            ↳ New {cat.level === 1 ? 'Sub-Category (Level 2)' : 'Sub-Sub Category (Level 3)'} under &ldquo;{cat.name}&rdquo;
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setAddingSubForParent(null);
-                              setSubCategoryName('');
-                            }}
-                            className="h-6 px-1.5 text-xs text-slate-500 shrink-0"
+                      {addingSubForParent?.id === cat.id && (
+                        <div className={cat.level === 1 ? 'ml-3 sm:ml-5' : 'ml-6 sm:ml-10'}>
+                          <form
+                            onSubmit={handleCreateSubCategory}
+                            className="p-2.5 bg-blue-50/80 border border-blue-200 border-l-[3px] border-l-blue-500 rounded-lg space-y-2"
                           >
-                            Cancel
-                          </Button>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11.5px] font-bold text-blue-900 truncate">
+                                ↳ New {cat.level === 1 ? 'Sub-Category' : 'Level 3'} under &ldquo;{cat.name}&rdquo;
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAddingSubForParent(null);
+                                  setSubCategoryName('');
+                                }}
+                                className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 px-1.5 py-0.5 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={subCategoryName}
+                                onChange={(e) => setSubCategoryName(e.target.value)}
+                                placeholder={cat.level === 1 ? 'Enter sub-category name...' : 'Enter level 3 name...'}
+                                className="h-9 text-xs flex-1"
+                                autoFocus
+                              />
+                              <Button
+                                type="submit"
+                                variant="primary"
+                                size="sm"
+                                loading={creatingSubCategory}
+                                disabled={!subCategoryName.trim()}
+                                className="h-9 shrink-0"
+                              >
+                                Add
+                              </Button>
+                            </div>
+                          </form>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={subCategoryName}
-                            onChange={(e) => setSubCategoryName(e.target.value)}
-                            placeholder={cat.level === 1 ? 'Enter sub-category name...' : 'Enter sub-sub category name...'}
-                            className="h-9 text-xs flex-1"
-                            autoFocus
-                          />
-                          <Button
-                            type="submit"
-                            variant="primary"
-                            size="sm"
-                            loading={creatingSubCategory}
-                            disabled={!subCategoryName.trim()}
-                            className="h-9 shrink-0"
-                          >
-                            Add
-                          </Button>
-                        </div>
-                      </form>
-                    </div>
-                  )}
-                </React.Fragment>
-              ))}
+                      )}
+                    </React.Fragment>
+                  );
+                });
+              })()}
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex justify-end">
