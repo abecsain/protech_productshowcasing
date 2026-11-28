@@ -11,9 +11,11 @@ import Input from '@/components/ui/Input';
 import PhoneInput from '@/components/ui/PhoneInput';
 import PasswordInput from '@/components/ui/PasswordInput';
 import Button from '@/components/ui/Button';
+import { useSecurity } from '@/components/SecurityProvider';
 
 export default function AuthPage() {
   const router = useRouter();
+  const { refreshAuth } = useSecurity();
   const [tab, setTab] = useState<'login' | 'register'>('register');
 
   useEffect(() => {
@@ -74,6 +76,7 @@ export default function AuthPage() {
       if (!res.ok) {
         setError(data.error || 'Invalid mobile or password');
       } else {
+        await refreshAuth();
         router.push('/products');
         router.refresh();
       }
@@ -134,6 +137,7 @@ export default function AuthPage() {
       if (!res.ok) {
         setError(data.error || 'Registration failed');
       } else {
+        await refreshAuth();
         router.push('/products');
         router.refresh();
       }

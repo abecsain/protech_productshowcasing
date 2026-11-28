@@ -290,7 +290,25 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
   const id=Number(segments[2]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Product not found.',404);const r=await db().execute({sql:'SELECT p.id,p.name,p.description,p.price,p.category_id AS categoryId,c.name AS category,p.created_at AS createdAt FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=?',args:[id]});if(!r.rows.length)return jsonError('Product not found.',404);const images=await db().execute({sql:'SELECT public_id AS publicId,version FROM product_images WHERE product_id=? ORDER BY sort_order',args:[id]});return NextResponse.json({product:{...r.rows[0],imageAssets:images.rows.map(i=>({...i,previewUrl:cloudUrl(String(i.publicId),String(i.version),300)}))}},{headers:{'Cache-Control':'no-store'}})
  }
  if(segments[0]==='admin'&&segments[1]==='products'&&segments.length===2&&method==='GET'){
-   const url=new URL(req.url),{page,limit,offset}=pagination(url.searchParams.get('page'),url.searchParams.get('limit'),50),q=(url.searchParams.get('q')||'').trim().slice(0,100),where=q?'WHERE p.name LIKE ? OR c.name LIKE ? OR CAST(p.price AS TEXT) LIKE ?':'',args=q?[`${q}%`,`${q}%`,`${q}%`]:[];
+   const url=new URL(req.url),{page,limit,offset}=pagination(url.searchParams.get('page'),url.searchParams.get('limit'),50),q=(url.searchParams.get('q')||'').trim().slice(0,100);
+   const catParam=url.searchParams.get('category')?.trim()||'';
+   const catId=catParam?Number(catParam):null;
+   const conditions:string[]=[];
+   const args:(string|number)[]=[];
+   if(q){
+     conditions.push('(p.name LIKE ? OR c.name LIKE ? OR CAST(p.price AS TEXT) LIKE ?)');
+     args.push(`${q}%`,`${q}%`,`${q}%`);
+   }
+   if(catParam){
+     if(Number.isSafeInteger(catId)&&catId!>0){
+       conditions.push('p.category_id=?');
+       args.push(catId!);
+     }else{
+       conditions.push('LOWER(c.name)=LOWER(?)');
+       args.push(catParam);
+     }
+   }
+   const where=conditions.length?`WHERE ${conditions.join(' AND ')}`:'';
    const countPromise = db().execute({sql:`SELECT COUNT(*) n FROM products p JOIN categories c ON c.id=p.category_id ${where}`,args});
    const prodsPromise = db().execute({
      sql: `SELECT p.id, p.name, p.description, p.price, p.category_id AS categoryId, c.name AS category, p.created_at AS createdAt
@@ -409,7 +427,8 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
      invalidateCategories();
      invalidateProducts();
     return NextResponse.json({ok:true,mergedCount:prodCount});
-   }catch{
+   }catch(e){
+    console.error('Category merge & delete failed:',e instanceof Error?e.message:e);
     await tx.rollback();
     return jsonError('Could not merge products.',500);
    }
@@ -430,7 +449,8 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
      await destroyAssets(imgs.rows.map(x=>String(x.public_id)));
     }
     return NextResponse.json({ok:true,deletedCount:prodCount});
-   }catch{
+   }catch(e){
+    console.error('Category delete all failed:',e instanceof Error?e.message:e);
     await tx.rollback();
     return jsonError('Could not delete category and products.',500);
    }

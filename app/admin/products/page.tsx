@@ -355,10 +355,10 @@ export default function AdminProductsPage() {
   };
 
   const handleOpenDeleteCategory = (cat: CategoryItem) => {
-    setDeletingCategory(cat);
-    setDeleteCategoryAction('merge');
-    setDeleteCategoryError('');
     const otherCats = categories.filter((c) => c.id !== cat.id);
+    setDeletingCategory(cat);
+    setDeleteCategoryAction(otherCats.length > 0 ? 'merge' : 'deleteAll');
+    setDeleteCategoryError('');
     setTargetMergeCategoryId(otherCats[0]?.id || '');
   };
 
@@ -384,7 +384,12 @@ export default function AdminProductsPage() {
         }
       }
 
-      const res = await fetch(`/api/admin/categories/${deletingCategory.id}`, {
+      const query = new URLSearchParams();
+      if (payload.action) query.set('action', String(payload.action));
+      if (payload.targetCategoryId) query.set('targetCategoryId', String(payload.targetCategoryId));
+      const qs = query.toString() ? `?${query.toString()}` : '';
+
+      const res = await fetch(`/api/admin/categories/${deletingCategory.id}${qs}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -401,6 +406,10 @@ export default function AdminProductsPage() {
           showToast(`Category and ${data.deletedCount || prodCount} products deleted`, 'info');
         } else {
           showToast(`Category "${deletingCategory.name}" deleted`, 'info');
+        }
+        if (selectedCatFilter === String(deletingCategory.id)) {
+          setSelectedCatFilter('');
+          setPage(1);
         }
         setDeletingCategory(null);
         loadCategories();

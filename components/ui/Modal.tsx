@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useId } from 'react';
 import { X } from 'lucide-react';
 
+let programmaticBackDepth = 0;
+
 export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -57,6 +59,7 @@ export function Modal({
     } catch {}
 
     const handlePopState = () => {
+      if (programmaticBackDepth > 0) return;
       isPoppedRef.current = true;
       onCloseRef.current();
     };
@@ -66,9 +69,24 @@ export function Modal({
     return () => {
       window.removeEventListener('popstate', handlePopState);
       // If modal was dismissed not through browser back (e.g. user clicked X, backdrop, or completed action),
-      // pop the history entry cleanly so the history stack is not left with an orphaned entry
-      if (!isPoppedRef.current && window.history.state?.modalId === currentModalId) {
-        window.history.back();
+      // pop the history entry cleanly so the history stack is not left with an orphaned entry.
+      // Defer via microtask so if another modal opens in the same render, we don't clobber its history state.
+      if (!isPoppedRef.current) {
+        queueMicrotask(() => {
+          if (window.history.state?.modalId === currentModalId) {
+            programmaticBackDepth++;
+            window.addEventListener(
+              'popstate',
+              () => {
+                setTimeout(() => {
+                  if (programmaticBackDepth > 0) programmaticBackDepth--;
+                }, 0);
+              },
+              { once: true, capture: true }
+            );
+            window.history.back();
+          }
+        });
       }
     };
   }, [isOpen]);

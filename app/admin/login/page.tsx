@@ -7,9 +7,11 @@ import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import PasswordInput from '@/components/ui/PasswordInput';
 import Button from '@/components/ui/Button';
+import { useSecurity } from '@/components/SecurityProvider';
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const { refreshAuth } = useSecurity();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,6 +37,7 @@ export default function AdminLoginPage() {
       if (!res.ok) {
         setError(data.error || 'Invalid credentials');
       } else {
+        await refreshAuth();
         router.push('/admin');
         router.refresh();
       }
