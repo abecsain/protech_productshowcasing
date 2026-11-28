@@ -28,11 +28,11 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Admin routes protection
+  // Admin routes protection — redirect unauthorized visitors to main home page
   if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
     if (!session || session.role !== 'admin') {
       const url = request.nextUrl.clone();
-      url.pathname = '/admin/login';
+      url.pathname = '/';
       return NextResponse.redirect(url);
     }
     return NextResponse.next();
