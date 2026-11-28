@@ -119,14 +119,8 @@ async function userRoute(req:Request,segments:string[]){
  }
  const p=await principal();if(!p||(p.role!=='user'&&p.role!=='admin'))return jsonError('Sign in required.',401);if(p.role==='user'&&p.mustChange&&segments[0]!=='auth')return jsonError('Password change required.',403);
  if(segments[0]==='categories'&&method==='GET'){
-  const now = Date.now();
-  if (cachedCategories && (now - cachedCategoriesTime < 60000)) {
-    return NextResponse.json({ categories: cachedCategories }, { headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' } });
-  }
   const tree = await loadCategoryTree();
-  cachedCategories = tree;
-  cachedCategoriesTime = Date.now();
-  return NextResponse.json({ categories: tree }, { headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' } });
+  return NextResponse.json({ categories: tree }, { headers: { 'Cache-Control': 'no-store' } });
  }
    if(segments[0]==='prices'&&method==='GET'){
     const fresh=await freshPrincipal();
@@ -146,24 +140,6 @@ async function userRoute(req:Request,segments:string[]){
     const cat = Number(url.searchParams.get('category')) || null;
     if (q && !await allow(`search:${ip(req)}`, 60)) return jsonError('Search limit reached. Try again shortly.', 429);
 
-    const now = Date.now();
-    if (!q && !cat && page === 1) {
-      if (limit === 12) {
-        const cached = p.canSeePrices ? cachedHomeFeaturedWithPrice : cachedHomeFeaturedNoPrice;
-        const cTime = p.canSeePrices ? cachedHomeFeaturedWithPriceTime : cachedHomeFeaturedNoPriceTime;
-        if (cached && (now - cTime < 30000)) {
-          return NextResponse.json({ products: cached, page: 1, limit: 12, total: cachedTotalCount || cached.length, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, no-store' } });
-        }
-      }
-      if (limit === 24) {
-        const cached = p.canSeePrices ? cachedFirstCatalogWithPrice : cachedFirstCatalogNoPrice;
-        const cTime = p.canSeePrices ? cachedFirstCatalogWithPriceTime : cachedFirstCatalogNoPriceTime;
-        if (cached && (now - cTime < 30000)) {
-          return NextResponse.json({ products: cached, page: 1, limit: 24, total: cachedTotalCount || cached.length, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, no-store' } });
-        }
-      }
-    }
-
     const catTree = await loadCategoryTree();
     const catPathMap = new Map<number, string>();
     for (const c of catTree) catPathMap.set(c.id, c.fullPath);
@@ -182,16 +158,9 @@ async function userRoute(req:Request,segments:string[]){
     }
     const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    let totalCountPromise: Promise<number>;
-    if (!q && !cat && cachedTotalCount !== null && (now - cachedTotalCountTime < 60000)) {
-      totalCountPromise = Promise.resolve(cachedTotalCount);
-    } else {
-      totalCountPromise = db().execute({ sql: `SELECT COUNT(*) AS n FROM products p ${w}`, args }).then(r => {
-        const cnt = Number(r.rows[0]?.n || 0);
-        if (!q && !cat) { cachedTotalCount = cnt; cachedTotalCountTime = Date.now(); }
-        return cnt;
-      });
-    }
+    const totalCountPromise = db()
+      .execute({ sql: `SELECT COUNT(*) AS n FROM products p ${w}`, args })
+      .then((r) => Number(r.rows[0]?.n || 0));
 
     const priceCol = p.canSeePrices ? 'p.price,' : '';
     const prodsPromise = db().execute({

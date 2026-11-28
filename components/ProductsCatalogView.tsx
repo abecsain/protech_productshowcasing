@@ -40,6 +40,15 @@ export default function ProductsCatalogView({
   const { totalCount } = useCart();
   const [products, setProducts] = useState<CatalogProduct[]>(initialProducts);
   const [categories, setCategories] = useState<Category[]>(initialCategories);
+
+  useEffect(() => {
+    setCategories(initialCategories);
+  }, [initialCategories]);
+
+  useEffect(() => {
+    setProducts(initialProducts);
+    setTotal(initialTotal);
+  }, [initialProducts, initialTotal]);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(initialCategory);
   const [searchQuery, setSearchQuery] = useState<string>(initialQuery);
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>(initialQuery);

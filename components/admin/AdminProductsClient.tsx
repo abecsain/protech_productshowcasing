@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   Trash2,
@@ -88,10 +89,20 @@ export default function AdminProductsClient({
   initialCategories = [],
   initialWhatsapp = '',
 }: AdminProductsClientProps) {
+  const router = useRouter();
   const { showToast } = useToast();
   const [products, setProducts] = useState<AdminProduct[]>(initialProducts);
   const [categories, setCategories] = useState<CategoryItem[]>(initialCategories);
   const [total, setTotal] = useState(initialTotal);
+
+  useEffect(() => {
+    setCategories(initialCategories);
+  }, [initialCategories]);
+
+  useEffect(() => {
+    setProducts(initialProducts);
+    setTotal(initialTotal);
+  }, [initialProducts, initialTotal]);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -240,7 +251,7 @@ export default function AdminProductsClient({
       if (debouncedSearch.trim()) params.set('q', debouncedSearch.trim());
       if (selectedCatFilter) params.set('category', selectedCatFilter);
 
-      const res = await fetch(`/api/admin/products?${params.toString()}`);
+      const res = await fetch(`/api/admin/products?${params.toString()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setProducts(data.products || []);
@@ -253,10 +264,10 @@ export default function AdminProductsClient({
     }
   }, [page, debouncedSearch, selectedCatFilter]);
 
-  // Load categories
-  const loadCategories = async () => {
+  // Load categories directly from DB
+  const loadCategories = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/categories');
+      const res = await fetch('/api/admin/categories', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setCategories(data.categories || []);
@@ -264,7 +275,18 @@ export default function AdminProductsClient({
     } catch (e) {
       console.error('Failed to load categories', e);
     }
-  };
+  }, []);
+
+  // Keep categories & products synced with DB on mount and window focus
+  useEffect(() => {
+    loadCategories();
+    const handleFocus = () => {
+      loadCategories();
+      loadProducts();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [loadCategories, loadProducts]);
 
   // Load WhatsApp settings
   const loadSettings = async () => {
@@ -447,6 +469,17 @@ export default function AdminProductsClient({
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 404) {
+          if (selectedCatFilter === String(deletingCategory.id)) {
+            setSelectedCatFilter('');
+            setPage(1);
+          }
+          setDeletingCategory(null);
+          showToast(`Category "${deletingCategory.name}" was already deleted. Synced with database.`, 'info');
+          await Promise.all([loadCategories(), loadProducts()]);
+          router.refresh();
+          return;
+        }
         setDeleteCategoryError(data.error || 'Failed to delete category');
       } else {
         if (prodCount > 0 && deleteCategoryAction === 'merge') {
@@ -462,8 +495,8 @@ export default function AdminProductsClient({
           setPage(1);
         }
         setDeletingCategory(null);
-        loadCategories();
-        loadProducts();
+        await Promise.all([loadCategories(), loadProducts()]);
+        router.refresh();
       }
     } catch {
       setDeleteCategoryError('Network error while deleting category');
