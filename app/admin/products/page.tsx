@@ -22,6 +22,7 @@ import {
   Check,
   Folder,
   Layers,
+  Camera,
 } from 'lucide-react';
 import SearchBar from '@/components/ui/SearchBar';
 import Pagination from '@/components/ui/Pagination';
@@ -194,6 +195,11 @@ export default function AdminProductsPage() {
   const [inlineCategoryError, setInlineCategoryError] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraError, setCameraError] = useState('');
 
   // Load products
   const loadProducts = useCallback(async (isInitial = false) => {
@@ -537,87 +543,211 @@ export default function AdminProductsPage() {
     } catch {}
   };
 
-  // Image Upload Handler using direct signed upload to Cloudinary
-  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
+  // Shared image compression + upload (Cloudinary when configured, with automatic direct server/DB upload)
+  const uploadImageFiles = async (files: File[]) => {
+    if (!files.length) return;
     setUploadingProgress(10);
     setFormError('');
+
+    let currentCount = formImages.length;
 
     try {
       const imageCompression = (await import('browser-image-compression')).default;
 
       for (let i = 0; i < files.length; i++) {
-        if (formImages.length >= 5) {
+        if (currentCount >= 5) {
           setFormError('Maximum 5 images allowed per product');
           break;
         }
 
         const rawFile = files[i]!;
 
-        // Compress
+        // Compress to WebP <= 800px & <= 0.34 MB
         setUploadingProgress(30);
-        const compressedFile = await imageCompression(rawFile, {
-          maxSizeMB: 0.35,
-          maxWidthOrHeight: 1000,
-          useWebWorker: true,
-          fileType: 'image/webp',
-        });
-        const compressedSizeKb = Math.round(compressedFile.size / 1024);
+        let compressedFile: File | Blob = rawFile;
+        try {
+          compressedFile = await imageCompression(rawFile, {
+            maxSizeMB: 0.34,
+            maxWidthOrHeight: 800,
+            useWebWorker: true,
+            fileType: 'image/webp',
+          });
+        } catch {
+          compressedFile = rawFile;
+        }
+        const compressedSizeKb = Math.max(1, Math.round(compressedFile.size / 1024));
 
-        // Signature
+        // Request upload configuration / signature
         setUploadingProgress(50);
         const sigRes = await fetch('/api/uploads/signature', { method: 'POST' });
-        if (!sigRes.ok) throw new Error('Failed to obtain upload signature');
+        if (!sigRes.ok) {
+          const errData = await sigRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to prepare image upload');
+        }
         const sigData = await sigRes.json();
 
-        // Direct Cloudinary upload
-        setUploadingProgress(70);
-        const cloudData = new FormData();
-        cloudData.append('file', compressedFile);
-        cloudData.append('api_key', sigData.apiKey);
-        cloudData.append('timestamp', String(sigData.timestamp));
-        cloudData.append('signature', sigData.signature);
-        cloudData.append('upload_preset', sigData.uploadPreset);
-        cloudData.append('folder', sigData.folder);
-        cloudData.append('public_id', sigData.publicId);
+        let uploadedItem: ImageUploadItem | null = null;
 
-        const uploadRes = await fetch(
-          `https://api.cloudinary.com/v1_1/${sigData.cloudName}/image/upload`,
-          { method: 'POST', body: cloudData }
-        );
-        if (!uploadRes.ok) throw new Error('Cloudinary upload failed');
-        const uploaded = await uploadRes.json();
+        if (sigData.mode === 'cloudinary' && sigData.cloudName && sigData.cloudName !== 'your_cloud_name') {
+          try {
+            setUploadingProgress(70);
+            const cloudData = new FormData();
+            cloudData.append('file', compressedFile);
+            cloudData.append('api_key', sigData.apiKey);
+            cloudData.append('timestamp', String(sigData.timestamp));
+            cloudData.append('signature', sigData.signature);
+            cloudData.append('upload_preset', sigData.uploadPreset);
+            cloudData.append('folder', sigData.folder);
+            cloudData.append('public_id', sigData.publicId);
 
-        // Verify with server
-        setUploadingProgress(90);
-        await fetch('/api/uploads/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            publicId: uploaded.public_id,
-            version: String(uploaded.version),
-          }),
-        });
+            const uploadRes = await fetch(
+              `https://api.cloudinary.com/v1_1/${sigData.cloudName}/image/upload`,
+              { method: 'POST', body: cloudData }
+            );
+            if (uploadRes.ok) {
+              const uploaded = await uploadRes.json();
+              setUploadingProgress(90);
+              const verifyRes = await fetch('/api/uploads/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  publicId: uploaded.public_id,
+                  version: String(uploaded.version),
+                }),
+              });
+              if (verifyRes.ok) {
+                uploadedItem = {
+                  publicId: uploaded.public_id,
+                  version: String(uploaded.version),
+                  previewUrl: uploaded.secure_url,
+                  sizeKb: compressedSizeKb,
+                };
+              }
+            }
+          } catch {
+            // Fall through to direct upload if Cloudinary fails
+          }
+        }
 
-        setFormImages((prev) => [
-          ...prev,
-          {
-            publicId: uploaded.public_id,
-            version: String(uploaded.version),
-            previewUrl: uploaded.secure_url,
+        if (!uploadedItem) {
+          setUploadingProgress(75);
+          const directData = new FormData();
+          const uploadName = rawFile.name ? rawFile.name.replace(/\.[^.]+$/, '.webp') : 'product.webp';
+          directData.append('file', compressedFile, uploadName);
+
+          const directRes = await fetch('/api/uploads/direct', {
+            method: 'POST',
+            body: directData,
+          });
+          const directJson = await directRes.json().catch(() => ({}));
+          if (!directRes.ok) {
+            throw new Error(directJson.error || 'Image upload failed');
+          }
+          uploadedItem = {
+            publicId: directJson.publicId,
+            version: String(directJson.version || '1'),
+            previewUrl: directJson.previewUrl || directJson.publicId,
             sizeKb: compressedSizeKb,
-          },
-        ]);
+          };
+        }
+
+        currentCount += 1;
+        setFormImages((prev) => [...prev, uploadedItem!]);
       }
     } catch (err) {
       console.error('Image upload failed', err);
-      setFormError(err instanceof Error ? err.message : 'Image upload failed. Ensure Cloud Name is configured.');
+      setFormError(err instanceof Error ? err.message : 'Image upload failed. Please try again.');
     } finally {
       setUploadingProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
     }
+  };
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    await uploadImageFiles(files);
+  };
+
+  const stopCameraStream = useCallback(() => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showCameraModal) {
+      stopCameraStream();
+      return;
+    }
+    if (videoRef.current && cameraStreamRef.current) {
+      videoRef.current.srcObject = cameraStreamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [showCameraModal, stopCameraStream]);
+
+  const handleOpenCamera = async () => {
+    setFormError('');
+    setCameraError('');
+    if (formImages.length >= 5) {
+      setFormError('Maximum 5 images allowed per product');
+      return;
+    }
+
+    const isTouchDevice =
+      typeof window !== 'undefined' &&
+      (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window);
+
+    // On mobile/tablet, launch the native device camera directly
+    if (isTouchDevice) {
+      cameraInputRef.current?.click();
+      return;
+    }
+
+    // On desktop/laptop, open live webcam capture modal if supported
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+          audio: false,
+        });
+        cameraStreamRef.current = stream;
+        setShowCameraModal(true);
+        return;
+      } catch {
+        // Fallback to native file/camera input if permission denied or no webcam
+      }
+    }
+
+    cameraInputRef.current?.click();
+  };
+
+  const handleCapturePhoto = async () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setCameraError('Camera is still initializing. Please try again.');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/webp', 0.9)
+    );
+    if (!blob) {
+      setCameraError('Could not capture photo from camera.');
+      return;
+    }
+
+    stopCameraStream();
+    setShowCameraModal(false);
+    const file = new File([blob], `camera-${Date.now()}.webp`, { type: 'image/webp' });
+    await uploadImageFiles([file]);
   };
 
   const handleRemoveFormImage = (index: number) => {
@@ -1830,33 +1960,56 @@ export default function AdminProductsPage() {
                 </span>
               </div>
 
-              {/* Upload Drag-Drop Box */}
+              {/* Upload Drag-Drop Box + Camera Capture Button */}
               {formImages.length < 5 && (
-                <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 hover:border-[#1D4ED8] bg-slate-50 rounded-xl p-5 cursor-pointer transition-colors text-center">
-                  <Upload className="w-6 h-6 text-slate-400 mb-1" />
-                  <p className="text-xs font-semibold text-slate-700">
-                    Click or drag & drop to upload images
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Compressed automatically to WebP (~0.35 MB) before Cloudinary upload
-                  </p>
-                  <Input
-                    ref={fileInputRef}
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2.5">
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 hover:border-[#1D4ED8] bg-slate-50 rounded-xl p-4 cursor-pointer transition-colors text-center">
+                    <Upload className="w-6 h-6 text-slate-400 mb-1" />
+                    <p className="text-xs font-semibold text-slate-700">
+                      Click or drag & drop to upload images
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Compressed automatically to WebP (~0.34 MB)
+                    </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleImageFileChange}
+                      disabled={uploadingProgress !== null}
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenCamera}
+                    disabled={uploadingProgress !== null}
+                    className="flex sm:flex-col items-center justify-center gap-2 sm:gap-1.5 px-4 py-3 sm:w-32 border-2 border-dashed border-blue-300 hover:border-[#1D4ED8] bg-blue-50/70 hover:bg-blue-50 text-[#1D4ED8] rounded-xl cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Take photo with camera"
+                  >
+                    <Camera className="w-6 h-6 shrink-0" />
+                    <span className="text-xs font-semibold">Camera</span>
+                  </button>
+
+                  <input
+                    ref={cameraInputRef}
                     type="file"
-                    multiple
-                    accept="image/png,image/jpeg,image/webp"
+                    accept="image/*"
+                    capture="environment"
                     className="hidden"
                     onChange={handleImageFileChange}
                     disabled={uploadingProgress !== null}
                   />
-                </label>
+                </div>
               )}
 
               {/* Progress Bar */}
               {uploadingProgress !== null && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs text-slate-600">
-                    <span>Compressing & uploading to Cloudinary...</span>
+                    <span>Compressing & uploading image...</span>
                     <span>{uploadingProgress}%</span>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
@@ -2186,6 +2339,59 @@ export default function AdminProductsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Live Camera Capture Modal (Desktop / Webcam) */}
+      {showCameraModal && (
+        <Modal
+          isOpen={showCameraModal}
+          onClose={() => {
+            stopCameraStream();
+            setShowCameraModal(false);
+          }}
+          title="Take Product Photo"
+        >
+          <div className="space-y-4">
+            <div className="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden flex items-center justify-center">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+            </div>
+
+            {cameraError && (
+              <p className="text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {cameraError}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  stopCameraStream();
+                  setShowCameraModal(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={handleCapturePhoto}
+                icon={<Camera size={15} />}
+              >
+                Capture & Upload
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

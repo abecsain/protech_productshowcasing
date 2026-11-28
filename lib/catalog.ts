@@ -20,6 +20,7 @@ export interface CatalogCategory {
 
 export function cloudUrl(publicId: string, version: string, width = 300) {
   if (!publicId) return '/product-placeholder.svg';
+  if (publicId.startsWith('/api/images/')) return publicId;
   if (publicId.startsWith('http://') || publicId.startsWith('https://')) return publicId;
   if (publicId.startsWith('seed/') || publicId.startsWith('unsplash/')) {
     const raw = publicId.split('#')[0].replace(/^(seed|unsplash)\//, '');

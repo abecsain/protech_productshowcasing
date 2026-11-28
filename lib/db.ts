@@ -38,6 +38,15 @@ export async function ensureSchema() {
           try {
             await c.execute("ALTER TABLE users ADD COLUMN address TEXT NOT NULL DEFAULT ''");
           } catch {}
+          try {
+            await c.execute(`CREATE TABLE IF NOT EXISTS stored_images (
+              id TEXT PRIMARY KEY,
+              mime_type TEXT NOT NULL,
+              data TEXT NOT NULL,
+              admin_id INTEGER NOT NULL,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )`);
+          } catch {}
           globalForDb.__turso_schema_ready = true;
           return;
         }
@@ -109,6 +118,13 @@ export async function ensureSchema() {
           admin_id INTEGER NOT NULL,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           claimed INTEGER NOT NULL DEFAULT 0
+        )`,
+        `CREATE TABLE IF NOT EXISTS stored_images (
+          id TEXT PRIMARY KEY,
+          mime_type TEXT NOT NULL,
+          data TEXT NOT NULL,
+          admin_id INTEGER NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )`,
         'CREATE INDEX IF NOT EXISTS idx_users_created ON users(created_at DESC, id DESC)',
         'CREATE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile)',
