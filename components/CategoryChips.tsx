@@ -25,7 +25,7 @@ export default function CategoryChips({
 }: CategoryChipsProps) {
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-  const [isScrolled, setIsScrolled] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const ancestors = selectedCategory ? getCategoryAncestors(categories, selectedCategory) : [];
@@ -38,7 +38,8 @@ export default function CategoryChips({
     if (!el) return;
 
     const onScroll = () => {
-      setIsScrolled(el.scrollLeft > 10);
+      const next = Math.min(1, Math.max(0, el.scrollLeft / 100));
+      setScrollProgress(next);
     };
 
     el.addEventListener('scroll', onScroll, { passive: true });
@@ -286,17 +287,22 @@ export default function CategoryChips({
             onClick={onOpenDrawer}
             aria-label="Open categories menu"
             title="Open categories menu"
-            className={`whitespace-nowrap shrink-0 flex items-center rounded-lg border border-slate-300 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 shadow-xs transition-all duration-300 ease-in-out cursor-pointer h-9 min-h-[36px] ${
-              isScrolled
-                ? 'w-9 min-w-[36px] px-0 justify-center gap-0'
-                : 'px-3 gap-1.5'
-            }`}
+            style={{
+              paddingLeft: `${8 + (1 - scrollProgress) * 4}px`,
+              paddingRight: `${8 + (1 - scrollProgress) * 4}px`,
+              gap: `${(1 - scrollProgress) * 6}px`,
+            }}
+            className="whitespace-nowrap shrink-0 flex items-center justify-center rounded-lg border border-slate-300 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 shadow-xs transition-colors cursor-pointer h-9 min-h-[36px] min-w-[36px]"
           >
             <Menu size={18} strokeWidth={2.2} className="text-[#1D4ED8] shrink-0" />
             <div
-              className={`flex items-center gap-1.5 overflow-hidden transition-all duration-300 ease-in-out ${
-                isScrolled ? 'max-w-0 opacity-0 pointer-events-none' : 'max-w-[120px] opacity-100'
-              }`}
+              style={{
+                maxWidth: `${(1 - scrollProgress) * 115}px`,
+                opacity: Math.max(0, 1 - scrollProgress * 1.2),
+                transform: `translateX(${-scrollProgress * 8}px)`,
+                pointerEvents: scrollProgress > 0.8 ? 'none' : 'auto',
+              }}
+              className="flex items-center gap-1.5 overflow-hidden will-change-[max-width,opacity,transform]"
             >
               <span className="text-[13px] font-semibold text-slate-800">Categories</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-[#1D4ED8] font-bold shrink-0">
@@ -309,8 +315,8 @@ export default function CategoryChips({
         <div
           ref={scrollContainerRef}
           onScroll={(e) => {
-            const scrolled = e.currentTarget.scrollLeft > 10;
-            if (scrolled !== isScrolled) setIsScrolled(scrolled);
+            const next = Math.min(1, Math.max(0, e.currentTarget.scrollLeft / 100));
+            setScrollProgress(next);
           }}
           className="flex gap-2 overflow-x-auto pb-1 scrollbar-none py-1 flex-1 min-w-0"
         >
