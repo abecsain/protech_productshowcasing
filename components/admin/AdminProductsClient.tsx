@@ -2711,50 +2711,63 @@ export default function AdminProductsClient({
                   const isExpanded = drawerExpandedIds.has(cat.id);
 
                   return (
-                    <React.Fragment key={cat.id}>
-                      <Button
-                        variant="ghost"
-                        fullWidth
-                        size="sm"
-                        onClick={() => {
-                          if (catHasChildren) {
+                    <div
+                      key={cat.id}
+                      className={`group w-full flex items-center gap-2.5 h-10 min-h-[40px] rounded-xl border transition-all ${
+                        cat.level === 2 ? 'pl-7 pr-3' : cat.level === 3 ? 'pl-11 pr-3' : 'px-3'
+                      } ${
+                        isSelected
+                          ? 'bg-blue-50/90 text-[#1D4ED8] font-bold border-blue-200 shadow-2xs'
+                          : 'bg-white hover:bg-slate-50 text-slate-700 font-medium border-slate-200/80 hover:border-slate-300'
+                      }`}
+                    >
+                      {catHasChildren ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             toggleDrawerExpand(cat.id);
-                          } else {
+                          }}
+                          aria-label={isExpanded ? `Collapse ${cat.name}` : `Expand ${cat.name}`}
+                          className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors cursor-pointer ${
+                            isExpanded
+                              ? 'bg-blue-50 text-[#1D4ED8] border-blue-300'
+                              : 'bg-white text-slate-600 border-slate-300 hover:border-[#1D4ED8] hover:text-[#1D4ED8]'
+                          }`}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown size={13} strokeWidth={2.5} />
+                          ) : (
+                            <ChevronRight size={13} strokeWidth={2.5} />
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
                             setSelectedCatFilter(isSelected ? '' : String(cat.id));
                             setPage(1);
                             setShowCategoryDrawer(false);
-                          }
+                          }}
+                          aria-label={`Select ${cat.name}`}
+                          className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#1D4ED8] text-white border-[#1D4ED8]'
+                              : 'bg-white border-slate-300 hover:border-[#1D4ED8]'
+                          }`}
+                        >
+                          {isSelected && <Check size={12} strokeWidth={3} />}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCatFilter(isSelected ? '' : String(cat.id));
+                          setPage(1);
+                          setShowCategoryDrawer(false);
                         }}
-                        icon={
-                          <span
-                            className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-colors ${
-                              isSelected
-                                ? 'bg-[#1D4ED8] text-white'
-                                : isExpanded
-                                ? 'bg-blue-50 text-[#1D4ED8] border border-blue-200'
-                                : 'bg-slate-100 text-slate-500 border border-slate-200 group-hover:bg-blue-50 group-hover:text-[#1D4ED8] group-hover:border-blue-200'
-                            }`}
-                          >
-                            {catHasChildren ? (
-                              isExpanded ? (
-                                <ChevronDown size={13} strokeWidth={2.5} />
-                              ) : (
-                                <ChevronRight size={13} strokeWidth={2.5} />
-                              )
-                            ) : isSelected ? (
-                              <Check size={12} strokeWidth={2.5} />
-                            ) : (
-                              <Folder size={12} />
-                            )}
-                          </span>
-                        }
-                        className={`group !justify-between text-left h-10 !min-h-[40px] rounded-xl border transition-all ${
-                          cat.level === 2 ? '!pl-7 !pr-3' : cat.level === 3 ? '!pl-11 !pr-3' : '!px-3'
-                        } ${
-                          isSelected
-                            ? 'bg-blue-50/90 text-[#1D4ED8] font-bold border-blue-200 shadow-2xs'
-                            : 'bg-white hover:bg-slate-50 text-slate-700 font-medium border-slate-200/80 hover:border-slate-300'
-                        }`}
+                        className="flex-1 flex items-center justify-between min-w-0 text-left cursor-pointer"
                       >
                         <span className="flex-1 truncate text-[13px] font-semibold text-left">
                           {cat.level > 1 ? `↳ ${cat.name}` : cat.name}
@@ -2768,33 +2781,8 @@ export default function AdminProductsClient({
                         >
                           {cat.productCount ?? 0}
                         </span>
-                      </Button>
-
-                      {catHasChildren && isExpanded && (
-                        <Button
-                          variant="ghost"
-                          fullWidth
-                          size="sm"
-                          onClick={() => {
-                            setSelectedCatFilter(isSelected ? '' : String(cat.id));
-                            setPage(1);
-                            setShowCategoryDrawer(false);
-                          }}
-                          className={`!justify-between text-left h-9 !min-h-[36px] rounded-lg border transition-all ${
-                            cat.level === 1 ? '!pl-8 !pr-3' : '!pl-12 !pr-3'
-                          } ${
-                            isSelected
-                              ? 'bg-blue-50 text-[#1D4ED8] font-bold border-blue-200'
-                              : 'bg-blue-50/40 hover:bg-blue-50 text-[#1D4ED8] font-semibold border-blue-100'
-                          }`}
-                        >
-                          <span className="flex-1 truncate text-[12px] text-left">
-                            ↳ All {cat.name}
-                          </span>
-                          {isSelected && <Check size={13} className="text-[#1D4ED8] shrink-0" />}
-                        </Button>
-                      )}
-                    </React.Fragment>
+                      </button>
+                    </div>
                   );
                 })
               )}

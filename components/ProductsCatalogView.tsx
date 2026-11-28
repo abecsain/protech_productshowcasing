@@ -563,69 +563,76 @@ export default function ProductsCatalogView({
                 const isExpanded = drawerExpandedIds.has(cat.id);
 
                 return (
-                  <React.Fragment key={cat.id}>
-                    <button
-                      onClick={() => {
-                        if (catHasChildren) {
-                          toggleDrawerExpand(cat.id);
-                        } else {
-                          handleCategorySelect(cat.id);
-                          setCategoryDrawerOpen(false);
-                        }
-                      }}
-                      className={`w-full flex items-center justify-between py-2.5 rounded-lg text-xs font-medium transition-colors ${
-                        cat.level === 2 ? 'pl-6 pr-3' : cat.level === 3 ? 'pl-10 pr-3' : 'px-3'
-                      } ${
-                        isSelected
-                          ? 'bg-blue-50 text-[#1D4ED8] font-bold'
-                          : 'text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate pr-2">
-                        {catHasChildren ? (
-                          isExpanded ? (
-                            <ChevronDown size={14} className="text-[#1D4ED8] shrink-0" />
-                          ) : (
-                            <ChevronRight size={14} className="text-slate-400 shrink-0" />
-                          )
-                        ) : (
-                          <ChevronRight
-                            size={13}
-                            className={isSelected ? 'text-[#1D4ED8] shrink-0' : 'text-slate-300 shrink-0'}
-                          />
-                        )}
-                        <span className="truncate">
-                          {cat.level > 1 ? `↳ ${cat.name}` : cat.name}
-                        </span>
-                      </div>
-                      {isSelected ? (
-                        <Check size={14} className="text-[#1D4ED8] shrink-0" />
-                      ) : (
-                        <span className="text-[10px] text-slate-400 font-semibold bg-slate-100 px-1.5 py-0.5 rounded-full shrink-0">
-                          {cat.productCount ?? 0}
-                        </span>
-                      )}
-                    </button>
-
-                    {catHasChildren && isExpanded && (
+                  <div
+                    key={cat.id}
+                    className={`w-full flex items-center gap-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      cat.level === 2 ? 'pl-6 pr-3' : cat.level === 3 ? 'pl-10 pr-3' : 'px-3'
+                    } ${
+                      isSelected
+                        ? 'bg-blue-50 text-[#1D4ED8] font-bold'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {catHasChildren ? (
                       <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleDrawerExpand(cat.id);
+                        }}
+                        aria-label={isExpanded ? `Collapse ${cat.name}` : `Expand ${cat.name}`}
+                        className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors cursor-pointer ${
+                          isExpanded
+                            ? 'bg-blue-50 text-[#1D4ED8] border-blue-300'
+                            : 'bg-white text-slate-600 border-slate-300 hover:border-[#1D4ED8] hover:text-[#1D4ED8]'
+                        }`}
+                      >
+                        {isExpanded ? (
+                          <ChevronDown size={14} strokeWidth={2.5} />
+                        ) : (
+                          <ChevronRight size={14} strokeWidth={2.5} />
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
                         onClick={() => {
                           handleCategorySelect(cat.id);
                           setCategoryDrawerOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between py-2 rounded-lg text-[11.5px] font-semibold transition-colors ${
-                          cat.level === 1 ? 'pl-7 pr-3' : 'pl-11 pr-3'
-                        } ${
+                        aria-label={`Select ${cat.name}`}
+                        className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors cursor-pointer ${
                           isSelected
-                            ? 'bg-blue-50/90 text-[#1D4ED8]'
-                            : 'text-[#1D4ED8] hover:bg-blue-50/60'
+                            ? 'bg-[#1D4ED8] text-white border-[#1D4ED8]'
+                            : 'bg-white border-slate-300 hover:border-[#1D4ED8]'
                         }`}
                       >
-                        <span className="truncate">↳ All {cat.name}</span>
-                        {isSelected && <Check size={13} className="text-[#1D4ED8] shrink-0" />}
+                        {isSelected && <Check size={13} strokeWidth={3} />}
                       </button>
                     )}
-                  </React.Fragment>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleCategorySelect(cat.id);
+                        setCategoryDrawerOpen(false);
+                      }}
+                      className="flex-1 flex items-center justify-between min-w-0 text-left py-0.5 cursor-pointer"
+                    >
+                      <span className="truncate pr-2">
+                        {cat.level > 1 ? `↳ ${cat.name}` : cat.name}
+                      </span>
+                      <span
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${
+                          isSelected
+                            ? 'bg-blue-100 text-[#1D4ED8]'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {cat.productCount ?? 0}
+                      </span>
+                    </button>
+                  </div>
                 );
               })}
 
