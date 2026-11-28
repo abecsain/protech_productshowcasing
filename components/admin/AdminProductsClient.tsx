@@ -1740,7 +1740,7 @@ export default function AdminProductsClient({
               />
             )}
 
-            <div className="divide-y divide-slate-100 max-h-[58vh] overflow-y-auto pr-1">
+            <div className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto pr-2">
               {categories
                 .filter(
                   (cat) =>
@@ -1751,16 +1751,16 @@ export default function AdminProductsClient({
                 .map((cat) => (
                 <React.Fragment key={cat.id}>
                   <div
-                    className={`py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-3 ${
+                    className={`py-2.5 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 ${
                       cat.level === 2
-                        ? 'pl-3 sm:pl-5 border-l-2 border-blue-200'
+                        ? 'pl-2.5 sm:pl-5 border-l-2 border-blue-200'
                         : cat.level === 3
-                        ? 'pl-6 sm:pl-10 border-l-2 border-slate-200'
+                        ? 'pl-5 sm:pl-10 border-l-2 border-slate-200'
                         : ''
                     }`}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start sm:items-center justify-between sm:justify-start gap-2">
+                      <div className="flex items-center justify-between sm:justify-start gap-2">
                         <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-initial">
                           {cat.level > 1 && (
                             <span className="text-slate-400 text-xs shrink-0">↳</span>
@@ -1781,8 +1781,8 @@ export default function AdminProductsClient({
                           >
                             {cat.level === 1 ? 'Main' : cat.level === 2 ? 'Sub' : 'L3'}
                           </span>
-                          <span className="text-[11px] text-slate-500 whitespace-nowrap sm:hidden">
-                            • {cat.productCount ?? 0}
+                          <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full whitespace-nowrap sm:hidden">
+                            {cat.productCount ?? 0}
                           </span>
                         </div>
                       </div>
@@ -1790,44 +1790,45 @@ export default function AdminProductsClient({
                         {cat.productCount ?? 0} {cat.productCount === 1 ? 'product' : 'products'}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                    <div
+                      className={`grid gap-1.5 w-full sm:w-auto sm:flex sm:items-center shrink-0 ${
+                        cat.level < 3 ? 'grid-cols-3' : 'grid-cols-2'
+                      }`}
+                    >
                       {cat.level < 3 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        <button
+                          type="button"
                           onClick={() => {
                             setAddingSubForParent(cat);
                             setSubCategoryName('');
                           }}
-                          className="text-emerald-700 hover:text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/70 text-xs h-8 !min-h-[32px] px-2.5 border border-emerald-200/80 rounded-lg whitespace-nowrap"
-                          icon={<Plus size={13} />}
+                          className="inline-flex items-center justify-center gap-1 text-emerald-700 hover:text-emerald-800 bg-emerald-50/80 hover:bg-emerald-100/80 text-xs font-semibold h-8 px-2.5 border border-emerald-200 rounded-lg whitespace-nowrap transition-colors cursor-pointer"
                         >
-                          Sub
-                        </Button>
+                          <Plus size={13} />
+                          <span>Sub</span>
+                        </button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <button
+                        type="button"
                         onClick={() => {
                           handleOpenEditCategory(cat);
                         }}
-                        className="text-[#1D4ED8] hover:text-[#1E40AF] bg-blue-50/70 hover:bg-blue-100/70 text-xs h-8 !min-h-[32px] px-2.5 border border-blue-200/80 rounded-lg whitespace-nowrap"
-                        icon={<Edit2 size={13} />}
+                        className="inline-flex items-center justify-center gap-1 text-[#1D4ED8] hover:text-[#1E40AF] bg-blue-50/80 hover:bg-blue-100/80 text-xs font-semibold h-8 px-2.5 border border-blue-200 rounded-lg whitespace-nowrap transition-colors cursor-pointer"
                       >
-                        Rename
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                        <Edit2 size={12} />
+                        <span>Rename</span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           setShowManageCategoriesModal(false);
                           handleOpenDeleteCategory(cat);
                         }}
-                        className="text-red-600 hover:text-red-700 bg-red-50/70 hover:bg-red-100/70 text-xs h-8 !min-h-[32px] px-2.5 border border-red-200/80 rounded-lg whitespace-nowrap"
-                        icon={<Trash2 size={13} />}
+                        className="inline-flex items-center justify-center gap-1 text-red-600 hover:text-red-700 bg-red-50/80 hover:bg-red-100/80 text-xs font-semibold h-8 px-2.5 border border-red-200 rounded-lg whitespace-nowrap transition-colors cursor-pointer"
                       >
-                        Delete
-                      </Button>
+                        <Trash2 size={12} />
+                        <span>Delete</span>
+                      </button>
                     </div>
                   </div>
 
