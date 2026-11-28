@@ -80,14 +80,14 @@ function ProductCard({
           }`}
         >
           {/* Square thumbnail with Cart Badge if added */}
-          <div className="relative w-full aspect-square bg-slate-50 rounded-lg overflow-hidden flex items-center justify-center">
+          <div className="relative w-full aspect-square bg-white rounded-lg overflow-hidden border border-slate-100 flex items-center justify-center">
             {product.image ? (
               <Image
                 src={product.image}
                 alt={product.name}
                 fill
                 sizes="(max-width: 640px) 33vw, 180px"
-                className="object-cover group-hover:scale-105 transition-transform duration-200"
+                className="object-contain p-1 group-hover:scale-105 transition-transform duration-200"
                 priority={priority}
                 loading={priority ? undefined : 'lazy'}
               />
@@ -173,14 +173,14 @@ function ProductCard({
         }`}
       >
         {/* Square Image with Cart Badge if added */}
-        <div className="relative w-full aspect-square bg-slate-50 overflow-hidden flex items-center justify-center">
+        <div className="relative w-full aspect-square bg-white overflow-hidden flex items-center justify-center">
           {product.image ? (
             <Image
               src={product.image}
               alt={product.name}
               fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
-              className="object-cover group-hover:scale-105 transition-transform duration-200"
+              className="object-contain p-1.5 group-hover:scale-105 transition-transform duration-200"
               priority={priority}
               loading={priority ? undefined : 'lazy'}
             />

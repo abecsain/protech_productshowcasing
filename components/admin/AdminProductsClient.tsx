@@ -1298,14 +1298,14 @@ export default function AdminProductsClient({
                     }}
                     className="flex items-center gap-3 min-w-0 cursor-pointer group text-left"
                   >
-                    <div className="relative w-14 h-14 bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center group-hover:border-[#1D4ED8] transition-colors">
+                    <div className="relative w-14 h-14 bg-white rounded-xl overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center group-hover:border-[#1D4ED8] transition-colors">
                       {p.image && p.image !== '/product-placeholder.svg' ? (
                         <Image
                           src={p.image}
                           alt={p.name}
                           fill
                           sizes="56px"
-                          className="object-cover"
+                          className="object-contain p-1"
                         />
                       ) : (
                         <div className="flex flex-col items-center justify-center text-slate-400">
@@ -1394,14 +1394,14 @@ export default function AdminProductsClient({
                     }}
                     className="flex items-center gap-3.5 min-w-0 flex-1 cursor-pointer group text-left"
                   >
-                    <div className="relative w-14 h-14 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center group-hover:border-[#1D4ED8] transition-colors">
+                    <div className="relative w-14 h-14 bg-white rounded-lg overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center group-hover:border-[#1D4ED8] transition-colors">
                       {p.image && p.image !== '/product-placeholder.svg' ? (
                         <Image
                           src={p.image}
                           alt={p.name}
                           fill
                           sizes="56px"
-                          className="object-cover"
+                          className="object-contain p-1"
                         />
                       ) : (
                         <div className="flex flex-col items-center justify-center text-slate-400">
@@ -1575,7 +1575,7 @@ export default function AdminProductsClient({
                           alt={`Thumbnail ${idx + 1}`}
                           fill
                           sizes="56px"
-                          className="object-cover"
+                          className="object-contain p-0.5 bg-white"
                         />
                       </div>
                     ))}
@@ -2489,14 +2489,14 @@ export default function AdminProductsClient({
                 {formImages.map((img, idx) => (
                   <div
                     key={idx}
-                    className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 group"
+                    className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-white group"
                   >
                     <Image
                       src={img.previewUrl}
                       alt={`Photo ${idx + 1}`}
                       fill
                       sizes="80px"
-                      className="object-cover"
+                      className="object-contain p-1"
                     />
 
                     {/* Compressed size badge */}

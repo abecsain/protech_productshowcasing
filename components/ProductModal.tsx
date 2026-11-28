@@ -141,7 +141,7 @@ export default function ProductModal({
                   alt={`${name} thumbnail ${idx + 1}`}
                   fill
                   sizes="56px"
-                  className="object-cover"
+                  className="object-contain p-0.5 bg-white"
                 />
               </IconButton>
             ))}

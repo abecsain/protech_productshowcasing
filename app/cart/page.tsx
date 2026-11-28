@@ -245,14 +245,14 @@ export default function CartPage() {
                 {items.map((item) => (
                   <Card key={item.id} padding="sm" className="flex items-center gap-3 sm:gap-4">
                     {/* Square Thumbnail */}
-                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 bg-slate-50 rounded-lg overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center">
+                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-lg overflow-hidden border border-slate-200 shrink-0 flex items-center justify-center">
                       {item.image ? (
                         <Image
                           src={item.image}
                           alt={item.name}
                           fill
                           sizes="80px"
-                          className="object-cover"
+                          className="object-contain p-1"
                         />
                       ) : (
                         <span className="text-[10px] font-bold text-slate-300">PTE</span>
