@@ -16,6 +16,7 @@ export interface SecurityUserInfo {
 
 interface SecurityContextType {
   canSeePrices: boolean;
+  authChecked: boolean;
   screenshotBlocked: boolean;
   userInfo: SecurityUserInfo | null;
   refreshAuth: () => Promise<void>;
@@ -23,6 +24,7 @@ interface SecurityContextType {
 
 const SecurityContext = createContext<SecurityContextType>({
   canSeePrices: false,
+  authChecked: false,
   screenshotBlocked: false,
   userInfo: null,
   refreshAuth: async () => {},
@@ -30,20 +32,44 @@ const SecurityContext = createContext<SecurityContextType>({
 
 export const useSecurity = () => useContext(SecurityContext);
 
+const USER_SHELL_KEY = 'pte_user_shell';
+
 export default function SecurityProvider({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast();
 
   const [canSeePrices, setCanSeePrices] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [userInfo, setUserInfo] = useState<SecurityUserInfo | null>(null);
   const isLoggedInRef = useRef(false);
+  const userRoleRef = useRef<string | null>(null);
 
   const lastCanSeePricesRef = useRef<boolean | null>(null);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hydrate UI shell from sessionStorage immediately on mount to avoid navbar flash & waterfalls
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(USER_SHELL_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as SecurityUserInfo;
+        if (parsed && parsed.role) {
+          setUserInfo(parsed);
+          isLoggedInRef.current = true;
+          userRoleRef.current = parsed.role;
+          if (parsed.canSeePrices) {
+            setCanSeePrices(true);
+          }
+        }
+      }
+    } catch {}
+  }, []);
 
   // Check auth and current price status
   const checkStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/auth/me', {
+        cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' },
       });
       if (res.ok) {
@@ -51,8 +77,9 @@ export default function SecurityProvider({ children }: { children: React.ReactNo
         const user = data.user;
         if (user) {
           isLoggedInRef.current = true;
+          userRoleRef.current = user.role || 'user';
           const currentCanSee = Boolean(user.canSeePrices);
-          setUserInfo({
+          const nextUserInfo: SecurityUserInfo = {
             id: user.id,
             name: user.name || 'Customer',
             firmName: user.firmName || '',
@@ -61,8 +88,30 @@ export default function SecurityProvider({ children }: { children: React.ReactNo
             role: user.role || 'user',
             canSeePrices: currentCanSee,
             mustChange: Boolean(user.mustChange),
-          });
+          };
+          setUserInfo(nextUserInfo);
           setCanSeePrices(currentCanSee);
+
+          try {
+            sessionStorage.setItem(USER_SHELL_KEY, JSON.stringify(nextUserInfo));
+          } catch {}
+
+          // Schedule exact auto-off timer check if priceExpiresAt is set
+          if (expiryTimerRef.current) {
+            clearTimeout(expiryTimerRef.current);
+            expiryTimerRef.current = null;
+          }
+          if (user.role === 'user' && currentCanSee && user.priceExpiresAt) {
+            const expiryMs = Date.parse(String(user.priceExpiresAt));
+            if (Number.isFinite(expiryMs)) {
+              const delayMs = Math.max(150, expiryMs - Date.now() + 200);
+              if (delayMs <= 24 * 60 * 60 * 1000) {
+                expiryTimerRef.current = setTimeout(() => {
+                  checkStatus();
+                }, delayMs);
+              }
+            }
+          }
 
           // If price visibility transitioned while customer is on page
           if (
@@ -89,31 +138,45 @@ export default function SecurityProvider({ children }: { children: React.ReactNo
           lastCanSeePricesRef.current = currentCanSee;
         } else {
           isLoggedInRef.current = false;
+          userRoleRef.current = null;
           setUserInfo(null);
           setCanSeePrices(false);
           lastCanSeePricesRef.current = null;
+          try {
+            sessionStorage.removeItem(USER_SHELL_KEY);
+          } catch {}
         }
       } else {
         isLoggedInRef.current = false;
+        userRoleRef.current = null;
         setUserInfo(null);
         setCanSeePrices(false);
         lastCanSeePricesRef.current = null;
+        try {
+          sessionStorage.removeItem(USER_SHELL_KEY);
+        } catch {}
       }
     } catch {
       // Silently handle offline/polling error
+    } finally {
+      setAuthChecked(true);
     }
   }, [showToast]);
 
-  // Initial fetch and throttled 30s polling for real-time automatic price off (active tabs only)
+  // Initial fetch + live 4s polling for customer accounts when tab is visible
   useEffect(() => {
     checkStatus();
 
-    // Throttled 30s interval: only active when user is logged in & tab is visible
     const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && !document.hidden && isLoggedInRef.current) {
+      if (
+        typeof document !== 'undefined' &&
+        !document.hidden &&
+        isLoggedInRef.current &&
+        userRoleRef.current === 'user'
+      ) {
         checkStatus();
       }
-    }, 30000);
+    }, 4000);
 
     // Immediate check on tab visibility or window focus (if authenticated)
     const handleVisibility = () => {
@@ -143,6 +206,10 @@ export default function SecurityProvider({ children }: { children: React.ReactNo
 
     return () => {
       clearInterval(interval);
+      if (expiryTimerRef.current) {
+        clearTimeout(expiryTimerRef.current);
+        expiryTimerRef.current = null;
+      }
       window.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleVisibility);
       window.removeEventListener('auth-state-changed', handleAuthChange);
@@ -156,6 +223,7 @@ export default function SecurityProvider({ children }: { children: React.ReactNo
     <SecurityContext.Provider
       value={{
         canSeePrices,
+        authChecked,
         screenshotBlocked: false,
         userInfo,
         refreshAuth: checkStatus,

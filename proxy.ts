@@ -28,6 +28,13 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Root path redirect without hitting remote DB
+  if (pathname === '/') {
+    const url = request.nextUrl.clone();
+    url.pathname = session?.role === 'admin' ? '/admin' : '/products';
+    return NextResponse.redirect(url);
+  }
+
   // Admin routes protection — redirect unauthorized visitors to main home page
   if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
     if (!session || session.role !== 'admin') {
@@ -57,6 +64,7 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/',
     '/admin/:path*',
     '/auth',
   ],

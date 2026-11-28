@@ -52,7 +52,7 @@ export default function ProductModal({
     let ignore = false;
     async function load() {
       try {
-        const res = await fetch(`/api/products/${productId}`);
+        const res = await fetch(`/api/products/${productId}`, { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           if (!ignore && data.product) {
@@ -69,7 +69,7 @@ export default function ProductModal({
     return () => {
       ignore = true;
     };
-  }, [productId]);
+  }, [productId, canSeePrices]);
 
   const images = product?.images?.length
     ? product.images

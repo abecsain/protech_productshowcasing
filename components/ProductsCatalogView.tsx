@@ -16,6 +16,7 @@ import Skeleton from '@/components/ui/Skeleton';
 import EmptyState from '@/components/ui/EmptyState';
 import { useCart } from '@/components/CartContext';
 import { usePrices } from '@/lib/usePrices';
+import { getCategoryAncestors } from '@/lib/categories';
 import type { CatalogProduct, CatalogCategory } from '@/lib/catalog';
 
 interface ProductsCatalogViewProps {
@@ -49,14 +50,17 @@ export default function ProductsCatalogView({
   const productIds = useMemo(() => products.map((p) => p.id), [products]);
   const { prices, canSeePrices } = usePrices(productIds);
 
-  const isFirstRender = useRef(true);
+  const isFirstUrlSyncRef = useRef(true);
+  const lastLoadedKeyRef = useRef(
+    `${initialPage}|${initialCategory ?? ''}|${initialQuery.trim()}`
+  );
   const hasRestoredScrollRef = useRef(false);
   const isRestoringScrollRef = useRef(false);
 
   // Sync state to URL & sessionStorage
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
+    if (isFirstUrlSyncRef.current) {
+      isFirstUrlSyncRef.current = false;
       return;
     }
     const params = new URLSearchParams();
@@ -206,10 +210,14 @@ export default function ProductsCatalogView({
   }, [page, debouncedSearchQuery, selectedCategory]);
 
   useEffect(() => {
-    // Skip on initial mount since SSR data is already present!
-    if (isFirstRender.current) return;
+    // Skip when state still matches SSR initial data (works in Strict Mode too)
+    const currentKey = `${page}|${selectedCategory ?? ''}|${debouncedSearchQuery.trim()}`;
+    if (lastLoadedKeyRef.current === currentKey) {
+      return;
+    }
+    lastLoadedKeyRef.current = currentKey;
     loadProducts();
-  }, [loadProducts]);
+  }, [loadProducts, page, selectedCategory, debouncedSearchQuery]);
 
   // Restore scroll position
   useEffect(() => {
@@ -274,9 +282,15 @@ export default function ProductsCatalogView({
 
   const totalPages = Math.ceil(total / 24);
 
-  const filteredDrawerCategories = categories.filter((cat) =>
-    cat.name.toLowerCase().includes(drawerSearch.toLowerCase().trim())
-  );
+  const filteredDrawerCategories = categories.filter((cat) => {
+    const q = drawerSearch.toLowerCase().trim();
+    if (!q) return true;
+    return cat.name.toLowerCase().includes(q) || cat.fullPath.toLowerCase().includes(q);
+  });
+
+  const activeBreadcrumbs = selectedCategory
+    ? getCategoryAncestors(categories, selectedCategory)
+    : [];
 
   return (
     <>
@@ -320,17 +334,43 @@ export default function ProductsCatalogView({
 
             {/* Right Product Grid Area */}
             <div className="flex-1 min-w-0">
-              {/* Category Title & Item Count Bar */}
-              <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                    {selectedCategory
-                      ? categories.find((c) => c.id === selectedCategory)?.name || 'Products'
-                      : debouncedSearchQuery
-                      ? `Results for "${debouncedSearchQuery}"`
-                      : 'All Products'}
-                  </h1>
-                  <span className="text-xs text-slate-400 font-medium bg-slate-100 px-2 py-0.5 rounded-full">
+              {/* Category Title / Breadcrumb & Item Count Bar */}
+              <div className="flex items-center justify-between gap-2 mb-4 pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                  {activeBreadcrumbs.length > 0 ? (
+                    <div className="flex items-center gap-1 flex-wrap text-sm sm:text-base font-bold text-slate-900">
+                      <button
+                        type="button"
+                        onClick={() => handleCategorySelect(null)}
+                        className="text-slate-500 hover:text-[#1D4ED8] font-medium text-xs sm:text-sm"
+                      >
+                        All
+                      </button>
+                      {activeBreadcrumbs.map((crumb, idx) => (
+                        <React.Fragment key={crumb.id}>
+                          <span className="text-slate-300 text-xs">/</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCategorySelect(crumb.id)}
+                            className={`truncate max-w-[160px] sm:max-w-none ${
+                              idx === activeBreadcrumbs.length - 1
+                                ? 'text-slate-900 font-bold'
+                                : 'text-slate-600 hover:text-[#1D4ED8] font-medium text-xs sm:text-sm'
+                            }`}
+                          >
+                            {crumb.name}
+                          </button>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  ) : (
+                    <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                      {debouncedSearchQuery
+                        ? `Results for "${debouncedSearchQuery}"`
+                        : 'All Products'}
+                    </h1>
+                  )}
+                  <span className="text-xs text-slate-400 font-medium bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
                     {total} items
                   </span>
                 </div>
@@ -380,6 +420,7 @@ export default function ProductsCatalogView({
                             description: p.description,
                             category: p.category,
                             categoryId: p.categoryId,
+                            categoryPath: p.categoryPath,
                             image: p.image,
                             imageCount: p.imageCount,
                             price,
@@ -494,18 +535,22 @@ export default function ProductsCatalogView({
                       handleCategorySelect(cat.id);
                       setCategoryDrawerOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                    className={`w-full flex items-center justify-between py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                      cat.level === 2 ? 'pl-6 pr-3' : cat.level === 3 ? 'pl-10 pr-3' : 'px-3'
+                    } ${
                       isSelected
                         ? 'bg-blue-50 text-[#1D4ED8] font-bold'
                         : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 truncate pr-2">
+                    <div className="flex items-center gap-2 truncate pr-2">
                       <ChevronRight
                         size={13}
                         className={isSelected ? 'text-[#1D4ED8]' : 'text-slate-400'}
                       />
-                      <span className="truncate">{cat.name}</span>
+                      <span className="truncate">
+                        {cat.level > 1 ? `↳ ${cat.name}` : cat.name}
+                      </span>
                     </div>
                     {isSelected ? (
                       <Check size={14} className="text-[#1D4ED8] shrink-0" />

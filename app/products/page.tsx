@@ -5,7 +5,7 @@ import PageContainer from '@/components/ui/PageContainer';
 import ProductsCatalogView from '@/components/ProductsCatalogView';
 import { getCachedCategories, getCachedProductsPage } from '@/lib/catalog';
 
-export const revalidate = 600; // Cache page for 10 minutes (revalidated on admin mutation)
+export const dynamic = 'force-dynamic';
 
 interface ProductsPageProps {
   searchParams?: Promise<{

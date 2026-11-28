@@ -18,6 +18,7 @@ export interface ProductItem {
   price?: number | null;
   category: string;
   categoryId?: number;
+  categoryPath?: string;
   image: string;
   imageCount?: number;
 }
@@ -198,7 +199,7 @@ function ProductCard({
         <div className="p-2.5 sm:p-3.5 flex flex-col flex-1 justify-between gap-2">
           <div>
             <span className="text-[11px] text-slate-500 font-medium block truncate">
-              {product.category}
+              {product.categoryPath || product.category}
             </span>
             <h3 className="text-[13px] sm:text-[14px] font-semibold text-slate-900 line-clamp-2 leading-snug mt-0.5 group-hover:text-[#1D4ED8] transition-colors">
               {product.name}

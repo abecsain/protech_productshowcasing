@@ -30,27 +30,66 @@ export async function ensureSchema() {
     ready = (async () => {
       const c = db();
       try {
-        const check = await c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users' LIMIT 1");
-        if (check.rows.length > 0) {
-          try {
-            await c.execute("ALTER TABLE users ADD COLUMN firm_name TEXT NOT NULL DEFAULT ''");
-          } catch {}
-          try {
-            await c.execute("ALTER TABLE users ADD COLUMN address TEXT NOT NULL DEFAULT ''");
-          } catch {}
-          try {
-            await c.execute(`CREATE TABLE IF NOT EXISTS stored_images (
-              id TEXT PRIMARY KEY,
-              mime_type TEXT NOT NULL,
-              data TEXT NOT NULL,
-              admin_id INTEGER NOT NULL,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )`);
-          } catch {}
-          globalForDb.__turso_schema_ready = true;
-          return;
-        }
-      } catch {}
+        await c.batch(
+          [
+            'SELECT id, firm_name, address FROM users LIMIT 1',
+            'SELECT 1 FROM stored_images LIMIT 1',
+            'SELECT id, parent_id FROM categories LIMIT 1',
+          ],
+          'read'
+        );
+        globalForDb.__turso_schema_ready = true;
+        return;
+      } catch {
+        try {
+          const check = await c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users' LIMIT 1");
+          if (check.rows.length > 0) {
+            try {
+              await c.execute("ALTER TABLE users ADD COLUMN firm_name TEXT NOT NULL DEFAULT ''");
+            } catch {}
+            try {
+              await c.execute("ALTER TABLE users ADD COLUMN address TEXT NOT NULL DEFAULT ''");
+            } catch {}
+            try {
+              await c.execute(`CREATE TABLE IF NOT EXISTS stored_images (
+                id TEXT PRIMARY KEY,
+                mime_type TEXT NOT NULL,
+                data TEXT NOT NULL,
+                admin_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+              )`);
+            } catch {}
+            // Ensure categories supports parent_id (3-level hierarchy) without global UNIQUE(name)
+            try {
+              await c.execute('SELECT id, parent_id FROM categories LIMIT 1');
+            } catch {
+              try {
+                await c.executeMultiple(`
+                  PRAGMA foreign_keys = OFF;
+                  CREATE TABLE IF NOT EXISTS categories_v2 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    parent_id INTEGER REFERENCES categories_v2(id),
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                  );
+                  INSERT INTO categories_v2(id, name, parent_id, created_at)
+                  SELECT id, name, NULL, created_at FROM categories;
+                  DROP TABLE categories;
+                  ALTER TABLE categories_v2 RENAME TO categories;
+                  CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_parent_name ON categories(COALESCE(parent_id, 0), LOWER(name));
+                  CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
+                `);
+              } catch {
+                try {
+                  await c.execute('ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)');
+                } catch {}
+              }
+            }
+            globalForDb.__turso_schema_ready = true;
+            return;
+          }
+        } catch {}
+      }
 
       const statements = [
         'PRAGMA foreign_keys=ON',
@@ -80,9 +119,12 @@ export async function ensureSchema() {
         )`,
         `CREATE TABLE IF NOT EXISTS categories (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          parent_id INTEGER REFERENCES categories(id),
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )`,
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_parent_name ON categories(COALESCE(parent_id, 0), LOWER(name))',
+        'CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id)',
         `CREATE TABLE IF NOT EXISTS products (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,

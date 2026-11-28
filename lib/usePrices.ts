@@ -19,6 +19,10 @@ export function usePrices(productIds: number[]) {
 
   useEffect(() => {
     if (!canSeePrices) {
+      for (const k of Object.keys(priceCache)) {
+        delete priceCache[Number(k)];
+      }
+      fetchedIdsRef.current.clear();
       setPrices({});
       return;
     }
@@ -46,9 +50,20 @@ export function usePrices(productIds: number[]) {
     setLoading(true);
 
     const controller = new AbortController();
-    fetch(`/api/prices?ids=${missingIds.join(',')}`, { signal: controller.signal })
+    fetch(`/api/prices?ids=${missingIds.join(',')}`, {
+      signal: controller.signal,
+      cache: 'no-store',
+    })
       .then((res) => (res.ok ? res.json() : { prices: {} }))
       .then((data) => {
+        if (data.canSeePrices === false) {
+          for (const k of Object.keys(priceCache)) {
+            delete priceCache[Number(k)];
+          }
+          fetchedIdsRef.current.clear();
+          setPrices({});
+          return;
+        }
         if (data.prices) {
           Object.assign(priceCache, data.prices);
           setPrices((prev) => ({ ...prev, ...data.prices }));

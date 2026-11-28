@@ -27,8 +27,8 @@ interface UserInfo {
 
 export default function CartPage() {
   const router = useRouter();
-  const { items, updateQuantity, removeItem, clearCart, totalCount, totalPrice } = useCart();
-  const { userInfo: user } = useSecurity();
+  const { items, updateQuantity, removeItem, clearCart, totalCount, totalPrice, pricesLoading } = useCart();
+  const { userInfo: user, canSeePrices } = useSecurity();
   const [adminWhatsapp, setAdminWhatsapp] = useState('918319613801');
 
   // Guest details modal state for unauthenticated ordering
@@ -81,28 +81,27 @@ export default function CartPage() {
     let message = '';
 
     if (customer.canSeePrices && typeof totalPrice === 'number') {
-      message += `🛒 *PROTECH ENTERPRISES - PURCHASE ORDER*\n`;
+      message += `🧾 *PROTECH ENTERPRISES - ORDER BILL*\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
       message += `👤 *Customer:* ${customer.name}\n`;
       if (customer.firmName) message += `🏢 *Firm Name:* ${customer.firmName}\n`;
       if (customer.mobile) message += `📱 *Mobile:* +91 ${customer.mobile}\n`;
       if (customer.address) message += `📍 *Address:* ${customer.address}\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `📦 *ORDER ITEMS:*\n\n`;
+      message += `📦 *BILL DETAILS (PRODUCT-WISE):*\n\n`;
 
       items.forEach((item, index) => {
         const unitPrice = typeof item.price === 'number' ? item.price : 0;
         const itemTotal = unitPrice * item.quantity;
         message += `${index + 1}. *${item.name}*\n`;
-        message += `   • Unit Price: ₹${unitPrice.toLocaleString('en-IN')}\n`;
-        message += `   • Quantity: ${item.quantity}\n`;
-        message += `   • Item Total: *₹${itemTotal.toLocaleString('en-IN')}*\n\n`;
+        message += `   Qty: ${item.quantity} × ₹${unitPrice.toLocaleString('en-IN')} = *₹${itemTotal.toLocaleString('en-IN')}*\n\n`;
       });
 
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `💰 *TOTAL ORDER AMOUNT: ₹${totalPrice.toLocaleString('en-IN')}*\n`;
+      message += `📊 *Total Items:* ${totalCount}\n`;
+      message += `💰 *TOTAL BILL AMOUNT: ₹${totalPrice.toLocaleString('en-IN')}*\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      message += `Please confirm our purchase order and provide dispatch details. Thank you!`;
+      message += `Please confirm our order bill and provide dispatch details. Thank you!`;
     } else {
       message += `🛒 *PROTECH ENTERPRISES - PURCHASE ORDER*\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━\n`;
@@ -136,7 +135,7 @@ export default function CartPage() {
         firmName: user.firmName || '',
         mobile: user.mobile || '',
         address: user.address || '',
-        canSeePrices: Boolean(user.canSeePrices),
+        canSeePrices: Boolean(canSeePrices),
       });
     } else {
       // User is not logged in / unregistered: prompt for firm name, mobile, address
@@ -266,7 +265,7 @@ export default function CartPage() {
                         {item.name}
                       </h2>
 
-                      {user?.canSeePrices && typeof item.price === 'number' ? (
+                      {canSeePrices && typeof item.price === 'number' ? (
                         <div className="mt-0.5">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-[13px] font-bold text-[#1D4ED8]">
@@ -278,6 +277,10 @@ export default function CartPage() {
                               Total: ₹{(item.price * item.quantity).toLocaleString('en-IN')}
                             </span>
                           </div>
+                        </div>
+                      ) : canSeePrices && pricesLoading ? (
+                        <div className="text-[12px] text-slate-400 mt-0.5 font-medium">
+                          Loading price...
                         </div>
                       ) : (
                         <div className="text-[12px] text-slate-400 mt-0.5 font-medium">
@@ -304,7 +307,7 @@ export default function CartPage() {
                     </div>
 
                     {/* Subtotal on desktop */}
-                    {user?.canSeePrices && typeof item.price === 'number' && (
+                    {canSeePrices && typeof item.price === 'number' && (
                       <div className="text-right shrink-0 hidden sm:block pr-2">
                         <div className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Item Total</div>
                         <div className="text-[16px] font-bold text-slate-900">
@@ -323,19 +326,45 @@ export default function CartPage() {
               <div className="lg:col-span-1">
                 <Card padding="md" className="space-y-4">
                   <h2 className="text-[18px] font-bold text-slate-900 border-b border-slate-100 pb-3">
-                    Order Summary
+                    {canSeePrices && typeof totalPrice === 'number' ? 'Order Bill Summary' : 'Order Summary'}
                   </h2>
 
-                  <div className="space-y-2 text-[14px] text-slate-600">
+                  <div className="space-y-2.5 text-[14px] text-slate-600">
+                    {canSeePrices && typeof totalPrice === 'number' && (
+                      <div className="space-y-1.5 pb-2 border-b border-slate-100">
+                        {items.map((item) => {
+                          const unit = typeof item.price === 'number' ? item.price : 0;
+                          const lineTotal = unit * item.quantity;
+                          return (
+                            <div key={item.id} className="flex items-start justify-between gap-2 text-[13px]">
+                              <div className="min-w-0">
+                                <p className="font-medium text-slate-800 truncate">{item.name}</p>
+                                <p className="text-[11px] text-slate-400">
+                                  {item.quantity} × ₹{unit.toLocaleString('en-IN')}
+                                </p>
+                              </div>
+                              <span className="font-semibold text-slate-900 shrink-0">
+                                ₹{lineTotal.toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <div className="flex justify-between">
                       <span>Total Items</span>
                       <span className="font-semibold text-slate-900">{totalCount}</span>
                     </div>
 
-                    {user?.canSeePrices && typeof totalPrice === 'number' ? (
+                    {canSeePrices && typeof totalPrice === 'number' ? (
                       <div className="flex justify-between text-[16px] font-bold text-slate-900 pt-2 border-t border-slate-100">
-                        <span>Estimated Total</span>
+                        <span>Total Bill</span>
                         <span className="text-[#1D4ED8]">₹{totalPrice.toLocaleString('en-IN')}</span>
+                      </div>
+                    ) : canSeePrices && pricesLoading ? (
+                      <div className="pt-2 border-t border-slate-100 text-[12px] text-slate-500">
+                        Calculating product prices...
                       </div>
                     ) : (
                       <div className="pt-2 border-t border-slate-100 text-[12px] text-slate-500">
@@ -350,7 +379,9 @@ export default function CartPage() {
                       size="lg"
                       fullWidth
                       onClick={handleBuyClick}
-                      disabled={items.length === 0}
+                      disabled={items.length === 0 || (canSeePrices && pricesLoading)}
+                      loading={canSeePrices && pricesLoading}
+                      loadingText="Calculating Bill..."
                     >
                       Buy on WhatsApp
                     </Button>
@@ -369,12 +400,17 @@ export default function CartPage() {
         <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 bg-white border-t border-slate-200 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-lg">
           <div className="flex items-center justify-between gap-3">
             <div>
-              {user?.canSeePrices && typeof totalPrice === 'number' ? (
+              {canSeePrices && typeof totalPrice === 'number' ? (
                 <div>
-                  <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider">Total Amount</div>
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider">Total Bill</div>
                   <div className="text-[17px] font-bold text-[#1D4ED8] leading-tight">
                     ₹{totalPrice.toLocaleString('en-IN')}
                   </div>
+                </div>
+              ) : canSeePrices && pricesLoading ? (
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider">{totalCount} {totalCount === 1 ? 'Item' : 'Items'}</div>
+                  <div className="text-[13px] font-medium text-slate-500">Calculating...</div>
                 </div>
               ) : (
                 <div>
@@ -389,7 +425,9 @@ export default function CartPage() {
                 size="md"
                 fullWidth
                 onClick={handleBuyClick}
-                disabled={items.length === 0}
+                disabled={items.length === 0 || (canSeePrices && pricesLoading)}
+                loading={canSeePrices && pricesLoading}
+                loadingText="Calculating..."
                 className="font-bold py-2.5 shadow-sm"
               >
                 Buy on WhatsApp

@@ -1,30 +1,20 @@
-'use client';
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Users, Package, ArrowRight, ArrowLeft, ExternalLink, ShieldCheck } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
+import { requireRole } from '@/lib/security';
+import { getAdminDashboardStats } from '@/lib/admin-data';
 
-export default function AdminDashboardPage() {
-  const [stats, setStats] = useState<{ products: number; users: number } | null>(null);
-  const [loading, setLoading] = useState(true);
+export const dynamic = 'force-dynamic';
 
-  useEffect(() => {
-    async function loadStats() {
-      try {
-        const res = await fetch('/api/admin/dashboard');
-        if (res.ok) {
-          const data = await res.json();
-          setStats(data);
-        }
-      } catch (e) {
-        console.error('Failed to load dashboard stats', e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadStats();
-  }, []);
+export default async function AdminDashboardPage() {
+  const admin = await requireRole('admin');
+  if (!admin) {
+    redirect('/');
+  }
+
+  const stats = await getAdminDashboardStats();
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -78,7 +68,7 @@ export default function AdminDashboardPage() {
                 Total Products
               </p>
               <div className="text-2xl sm:text-4xl font-extrabold text-[#1D4ED8] mt-1 tracking-tight group-hover:scale-[1.02] origin-left transition-transform">
-                {loading ? '...' : (stats?.products ?? 0).toLocaleString('en-IN')}
+                {stats.products.toLocaleString('en-IN')}
               </div>
             </div>
             <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-lg bg-blue-50 text-[#1D4ED8] group-hover:bg-[#1D4ED8] group-hover:text-white flex items-center justify-center shrink-0 transition-colors">
@@ -87,7 +77,7 @@ export default function AdminDashboardPage() {
           </div>
           <div className="flex items-center justify-between mt-2 pt-0.5">
             <p className="text-[11px] sm:text-xs text-slate-400 truncate">
-              Across 16 categories
+              Across {stats.categories} {stats.categories === 1 ? 'category' : 'categories'}
             </p>
             <span className="text-[10px] sm:text-xs font-bold text-[#1D4ED8] opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-0.5 shrink-0">
               <span>Open</span>
@@ -108,7 +98,7 @@ export default function AdminDashboardPage() {
                 Total Users
               </p>
               <div className="text-2xl sm:text-4xl font-extrabold text-slate-900 group-hover:text-[#1D4ED8] mt-1 tracking-tight group-hover:scale-[1.02] origin-left transition-transform">
-                {loading ? '...' : (stats?.users ?? 0).toLocaleString('en-IN')}
+                {stats.users.toLocaleString('en-IN')}
               </div>
             </div>
             <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-lg bg-slate-100 text-slate-700 group-hover:bg-[#1D4ED8] group-hover:text-white flex items-center justify-center shrink-0 transition-colors">

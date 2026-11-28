@@ -8,7 +8,7 @@ import Card from '@/components/ui/Card';
 import HomeFeaturedGrid from '@/components/HomeFeaturedGrid';
 import { getCachedFeaturedProducts } from '@/lib/catalog';
 
-export const revalidate = 600; // Cache page for 10 minutes (revalidated on admin mutation)
+export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   const featuredProducts = await getCachedFeaturedProducts();

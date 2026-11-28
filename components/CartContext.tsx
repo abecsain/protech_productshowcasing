@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { useSecurity } from './SecurityProvider';
 
 export interface CartItem {
   id: number;
@@ -19,6 +20,7 @@ interface CartContextType {
   clearCart: () => void;
   totalCount: number;
   totalPrice: number | null;
+  pricesLoading: boolean;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -26,8 +28,11 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 const STORAGE_KEY = 'pte_cart';
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+  const { canSeePrices, authChecked } = useSecurity();
   const [items, setItems] = useState<CartItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [pricesLoading, setPricesLoading] = useState(false);
+  const prevCanSeeRef = useRef<boolean>(false);
 
   useEffect(() => {
     try {
@@ -51,12 +56,88 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [items, hydrated]);
 
+  // Sync cart item prices whenever price visibility changes or items without prices exist while allowed
+  const itemIdsKey = items.map((i) => `${i.id}:${typeof i.price === 'number' ? 'p' : 'n'}`).join(',');
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const justEnabled = !prevCanSeeRef.current && canSeePrices;
+    prevCanSeeRef.current = canSeePrices;
+
+    if (!canSeePrices) {
+      if (authChecked && items.some((i) => i.price !== undefined && i.price !== null)) {
+        setItems((prev) => prev.map(({ price: _p, ...rest }) => rest));
+      }
+      setPricesLoading(false);
+      return;
+    }
+
+    if (items.length === 0) {
+      setPricesLoading(false);
+      return;
+    }
+
+    // Fetch live prices for items missing price, or all cart items when price access just turned ON
+    const idsToFetch = justEnabled
+      ? items.map((i) => i.id)
+      : items.filter((i) => typeof i.price !== 'number').map((i) => i.id);
+
+    if (idsToFetch.length === 0) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+    setPricesLoading(true);
+
+    (async () => {
+      try {
+        const mergedPrices: Record<number, number> = {};
+        for (let i = 0; i < idsToFetch.length; i += 50) {
+          const chunk = idsToFetch.slice(i, i + 50);
+          const res = await fetch(`/api/prices?ids=${chunk.join(',')}`, {
+            signal: controller.signal,
+            cache: 'no-store',
+          });
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data.canSeePrices === false) return;
+          if (data.prices) {
+            Object.assign(mergedPrices, data.prices);
+          }
+        }
+        if (!cancelled && Object.keys(mergedPrices).length > 0) {
+          setItems((prev) =>
+            prev.map((item) =>
+              mergedPrices[item.id] !== undefined
+                ? { ...item, price: Number(mergedPrices[item.id]) }
+                : item
+            )
+          );
+        }
+      } catch {
+        // Ignore abort/network errors
+      } finally {
+        if (!cancelled) setPricesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [hydrated, canSeePrices, authChecked, itemIdsKey]);
+
   const addItem = (product: { id: number; name: string; price?: number | null; image: string; category?: string }, quantity: number = 1) => {
     setItems((prev) => {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
         return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item
+          item.id === product.id
+            ? {
+                ...item,
+                quantity: item.quantity + quantity,
+                ...(typeof product.price === 'number' ? { price: product.price } : {}),
+              }
+            : item
         );
       }
       return [...prev, { ...product, quantity }];
@@ -83,8 +164,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const totalCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
-  // If any item has no visible price, totalPrice is null
-  const hasPrices = items.length > 0 && items.every((i) => typeof i.price === 'number');
+  // Only expose totalPrice when price visibility is allowed and every item has a valid numeric price
+  const hasPrices = canSeePrices && items.length > 0 && items.every((i) => typeof i.price === 'number');
   const totalPrice = hasPrices
     ? items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0)
     : null;
@@ -99,6 +180,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         clearCart,
         totalCount,
         totalPrice,
+        pricesLoading,
       }}
     >
       {children}

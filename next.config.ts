@@ -56,7 +56,7 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: '/api/(.*)',
+        source: '/api/((?!images/|settings$|categories$).*)',
         headers: [
           {
             key: 'Cache-Control',

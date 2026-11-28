@@ -4,8 +4,9 @@ import bcrypt from 'bcryptjs';
 import { v2 as cloudinary } from 'cloudinary';
 import crypto from 'node:crypto';
 import { db, ensureSchema } from '@/lib/db';
-import { clearSession, jsonError, principal, requireRole, setSession, validOrigin, invalidatePrincipalCache } from '@/lib/security';
+import { clearSession, freshPrincipal, jsonError, principal, requireRole, setSession, validOrigin, invalidatePrincipalCache } from '@/lib/security';
 import { revalidateCatalog } from '@/lib/catalog';
+import { buildCategoryTreeList, getDescendantCategoryIds, type CategoryTreeNode } from '@/lib/categories';
 import { pagination, validPassword, cloudinaryProductId, lockoutState, canRequestUpload } from '@/lib/policy.mjs';
 
 export const runtime='nodejs';
@@ -29,10 +30,19 @@ function allowMem(bucket: string, limit = 5, windowSec = 60) {
   return true;
 }
 
-let cachedCategories: any[] | null = null;
+let cachedCategories: CategoryTreeNode[] | null = null;
 let cachedCategoriesTime = 0;
 function invalidateCategories() {
   revalidateCatalog(); cachedCategories = null; cachedCategoriesTime = 0; }
+async function loadCategoryTree(): Promise<CategoryTreeNode[]> {
+  const r = await db().execute('SELECT c.id, c.name, c.parent_id AS parentId, COUNT(p.id) AS productCount FROM categories c LEFT JOIN products p ON p.category_id=c.id GROUP BY c.id ORDER BY c.name');
+  return buildCategoryTreeList(r.rows.map((row) => ({
+    id: Number(row.id),
+    name: String(row.name),
+    parentId: row.parentId ? Number(row.parentId) : null,
+    directProductCount: Number(row.productCount || 0),
+  })));
+}
 
 let cachedSettings: { whatsapp: string } | null = null;
 let cachedSettingsTime = 0;
@@ -92,7 +102,7 @@ async function userRoute(req:Request,segments:string[]){
   if(!await csrf(req))return jsonError('Invalid request origin.',403);const b=await bodyJson(req),parsed=z.object({username:z.string().min(1).max(80),password:passwordSchema}).safeParse(b);if(!parsed.success)return jsonError('Invalid username or password.',401);if(!await allow(`admin-login:ip:${ip(req)}`))return jsonError('Too many attempts. Try again in a minute.',429);const r=await db().execute({sql:'SELECT id,password_hash,failed_attempts,locked_until,token_version FROM admin_users WHERE username=?',args:[parsed.data.username]});const u=r.rows[0];if(!u||u.locked_until&&Date.parse(String(u.locked_until))>Date.now()||!await bcrypt.compare(parsed.data.password,String(u?.password_hash||'$2a$12$aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))){if(u){const state=lockoutState(Number(u.failed_attempts),u.locked_until?String(u.locked_until):null);await db().execute({sql:'UPDATE admin_users SET failed_attempts=?,locked_until=? WHERE id=?',args:[state.failed,state.lockedUntil||null,u.id]})}return jsonError('Invalid username or password.',401)}await db().execute({sql:'UPDATE admin_users SET failed_attempts=0,locked_until=NULL WHERE id=?',args:[u.id]});const out=NextResponse.json({ok:true},{headers:{'Cache-Control':'no-store'}});await setSession(out,'admin',Number(u.id),Number(u.token_version));return out;
  }
  if(segments.join('/')==='auth/logout'&&method==='POST'){if(!await csrf(req))return jsonError('Invalid request origin.',403);const out=NextResponse.json({ok:true});await clearSession(out);return out}
- if(segments.join('/')==='auth/me'&&method==='GET'){const p=await principal();if(!p)return jsonError('Sign in required.',401);return NextResponse.json({user:p},{headers:{'Cache-Control':'no-store'}})}
+ if(segments.join('/')==='auth/me'&&method==='GET'){const p=await freshPrincipal();if(!p)return jsonError('Sign in required.',401);return NextResponse.json({user:p},{headers:{'Cache-Control':'no-store'}})}
  if(segments.join('/')==='auth/password'&&method==='PUT'){
   if(!await csrf(req))return jsonError('Invalid request origin.',403);const p=await requireRole('user');if(!p)return jsonError('Sign in required.',401);const parsed=z.object({oldPassword:passwordSchema,newPassword:passwordSchema,confirmPassword:passwordSchema}).safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Please check your password details.');const v=parsed.data;if(v.newPassword!==v.confirmPassword||!validPassword(v.newPassword,p.mobile!))return jsonError('Choose a strong password and make sure the passwords match.');const u=await db().execute({sql:'SELECT password_hash,token_version FROM users WHERE id=?',args:[p.id]});if(!await bcrypt.compare(v.oldPassword,String(u.rows[0]!.password_hash)))return jsonError('Current password is incorrect.',403);const hash=await bcrypt.hash(v.newPassword,12);await db().execute({sql:'UPDATE users SET password_hash=?,must_change_password=0,token_version=token_version+1 WHERE id=?',args:[hash,p.id]});const out=NextResponse.json({ok:true});await setSession(out,'user',p.id,p.version+1);return out;
  }
@@ -113,20 +123,21 @@ async function userRoute(req:Request,segments:string[]){
   if (cachedCategories && (now - cachedCategoriesTime < 60000)) {
     return NextResponse.json({ categories: cachedCategories }, { headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' } });
   }
-  const r = await db().execute('SELECT id,name FROM categories ORDER BY name COLLATE NOCASE');
-  cachedCategories = r.rows;
+  const tree = await loadCategoryTree();
+  cachedCategories = tree;
   cachedCategoriesTime = Date.now();
-  return NextResponse.json({ categories: r.rows }, { headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' } });
+  return NextResponse.json({ categories: tree }, { headers: { 'Cache-Control': 'public, max-age=30, stale-while-revalidate=60' } });
  }
    if(segments[0]==='prices'&&method==='GET'){
-    if(!p.canSeePrices)return NextResponse.json({prices:{}},{headers:{'Cache-Control':'private, no-store'}});
+    const fresh=await freshPrincipal();
+    if(!fresh?.canSeePrices)return NextResponse.json({prices:{},canSeePrices:false},{headers:{'Cache-Control':'private, no-store'}});
     const url=new URL(req.url),rawIds=(url.searchParams.get('ids')||'').split(','),ids=rawIds.map(Number).filter(n=>Number.isSafeInteger(n)&&n>0).slice(0,50);
-    if(!ids.length)return NextResponse.json({prices:{}},{headers:{'Cache-Control':'private, no-store'}});
+    if(!ids.length)return NextResponse.json({prices:{},canSeePrices:true},{headers:{'Cache-Control':'private, no-store'}});
     const placeholders=ids.map(()=>'?').join(',');
     const r=await db().execute({sql:`SELECT id,price FROM products WHERE id IN (${placeholders})`,args:ids});
     const priceMap: Record<number, number> = {};
     for(const row of r.rows){priceMap[Number(row.id)]=Number(row.price);}
-    return NextResponse.json({prices:priceMap},{headers:{'Cache-Control':'private, no-store'}});
+    return NextResponse.json({prices:priceMap,canSeePrices:true},{headers:{'Cache-Control':'private, no-store'}});
   }
   if(segments[0]==='products'&&segments.length===1&&method==='GET'){
     const url = new URL(req.url);
@@ -141,17 +152,21 @@ async function userRoute(req:Request,segments:string[]){
         const cached = p.canSeePrices ? cachedHomeFeaturedWithPrice : cachedHomeFeaturedNoPrice;
         const cTime = p.canSeePrices ? cachedHomeFeaturedWithPriceTime : cachedHomeFeaturedNoPriceTime;
         if (cached && (now - cTime < 30000)) {
-          return NextResponse.json({ products: cached, page: 1, limit: 12, total: cachedTotalCount || cached.length, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=30' } });
+          return NextResponse.json({ products: cached, page: 1, limit: 12, total: cachedTotalCount || cached.length, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, no-store' } });
         }
       }
       if (limit === 24) {
         const cached = p.canSeePrices ? cachedFirstCatalogWithPrice : cachedFirstCatalogNoPrice;
         const cTime = p.canSeePrices ? cachedFirstCatalogWithPriceTime : cachedFirstCatalogNoPriceTime;
         if (cached && (now - cTime < 30000)) {
-          return NextResponse.json({ products: cached, page: 1, limit: 24, total: cachedTotalCount || cached.length, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=30' } });
+          return NextResponse.json({ products: cached, page: 1, limit: 24, total: cachedTotalCount || cached.length, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, no-store' } });
         }
       }
     }
+
+    const catTree = await loadCategoryTree();
+    const catPathMap = new Map<number, string>();
+    for (const c of catTree) catPathMap.set(c.id, c.fullPath);
 
     const where: string[] = [];
     const args: (string | number)[] = [];
@@ -160,8 +175,10 @@ async function userRoute(req:Request,segments:string[]){
       args.push(`${q}%`, `%${q}%`);
     }
     if (cat) {
-      where.push('p.category_id=?');
-      args.push(cat);
+      const subtreeIds = getDescendantCategoryIds(catTree, cat);
+      const placeholders = subtreeIds.map(() => '?').join(',');
+      where.push(`p.category_id IN (${placeholders})`);
+      args.push(...subtreeIds);
     }
     const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -222,6 +239,7 @@ async function userRoute(req:Request,segments:string[]){
         description: r.description,
         category: r.category,
         categoryId: r.categoryId,
+        categoryPath: catPathMap.get(Number(r.categoryId)) || String(r.category),
         createdAt: r.createdAt,
         image: cloudUrl(imgInfo?.publicId || '', imgInfo?.version || '1', 300),
         imageCount: imgInfo ? imgInfo.count : 0,
@@ -275,7 +293,7 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
   if(!await csrf(req))return jsonError('Invalid request origin.',403);const a=await requireRole('admin');if(!a)return jsonError('Administrator access required.',403);const parsed=z.object({publicId:z.string().min(1),version:z.string().regex(/^\d+$/)}).safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Invalid uploaded image.');try{if(!await verifyOwnedAssets([parsed.data],a.id))return jsonError('Uploaded image could not be verified.',400);if(isStoredImageId(parsed.data.publicId))return NextResponse.json({ok:true});const asset=await cloud().api.resource(parsed.data.publicId,{resource_type:'image'});if(Number(asset.bytes)>350000||asset.width>800||asset.height>800)return jsonError('Image must be resized before upload.',400);return NextResponse.json({ok:true})}catch{return jsonError('Uploaded image could not be verified.',400)}
  }
  const a=await requireRole('admin');if(!a)return jsonError('Administrator access required.',403);
- if(segments[0]==='admin'&&segments[1]==='dashboard'&&method==='GET'){const [p,u]=await Promise.all([db().execute('SELECT COUNT(*) n FROM products'),db().execute('SELECT COUNT(*) n FROM users')]);return NextResponse.json({products:Number(p.rows[0]?.n),users:Number(u.rows[0]?.n)},{headers:{'Cache-Control':'no-store'}})}
+ if(segments[0]==='admin'&&segments[1]==='dashboard'&&method==='GET'){const r=await db().execute('SELECT (SELECT COUNT(*) FROM products) AS products,(SELECT COUNT(*) FROM users) AS users,(SELECT COUNT(*) FROM categories) AS categories');const row=r.rows[0];return NextResponse.json({products:Number(row?.products||0),users:Number(row?.users||0),categories:Number(row?.categories||0)},{headers:{'Cache-Control':'no-store'}})}
  if(segments[0]==='admin'&&segments[1]==='users'&&segments.length===2&&method==='GET'){const url=new URL(req.url),{page,limit,offset}=pagination(url.searchParams.get('page'),url.searchParams.get('limit'),50),q=(url.searchParams.get('q')||'').trim().slice(0,80);if(q&&!await allow(`admin-search:${ip(req)}`,60))return jsonError('Search limit reached.',429);const term=q?`WHERE name LIKE ? OR firm_name LIKE ? OR mobile LIKE ?`:'';const args=q?[`${q}%`,`${q}%`,`${q}%`]:[];const count=await db().execute({sql:`SELECT COUNT(*) n FROM users ${term}`,args});const users=await db().execute({sql:`SELECT id,name,firm_name AS firmName,mobile,address,created_at AS createdAt,price_visible AS priceVisible,price_expires_at AS expiresAt FROM users ${term} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`,args:[...args,limit,offset]});return NextResponse.json({users:users.rows.map(u=>({...u,firmName:String(u.firmName||''),address:String(u.address||''),priceVisible:Boolean(u.priceVisible&&(!u.expiresAt||Date.parse(String(u.expiresAt))>Date.now())),remainingMs:u.expiresAt?Math.max(0,Date.parse(String(u.expiresAt))-Date.now()):null})),total:Number(count.rows[0]?.n||0),page,limit},{headers:{'Cache-Control':'no-store'}})}
  if(segments[0]==='admin'&&segments[1]==='users'&&segments[2]&&segments[3]==='price'&&method==='PUT'){
   if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),parsed=z.object({enabled:z.boolean(),hours:z.number().min(0.01).max(24*365).nullable()}).safeParse(await bodyJson(req));if(!Number.isSafeInteger(id)||!parsed.success)return jsonError('Invalid price setting.');const expiry=parsed.data.enabled&&parsed.data.hours?new Date(Date.now()+parsed.data.hours*3600000).toISOString():null;const r=await db().execute({sql:'UPDATE users SET price_visible=?,price_expires_at=? WHERE id=? RETURNING id',args:[parsed.data.enabled?1:0,expiry,id]});if(!r.rows.length)return jsonError('User not found.',404);await log(a.id,'price_access_changed','user',id,{enabled:parsed.data.enabled,expiry});invalidatePrincipalCache();return NextResponse.json({ok:true})
@@ -293,6 +311,9 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
    const url=new URL(req.url),{page,limit,offset}=pagination(url.searchParams.get('page'),url.searchParams.get('limit'),50),q=(url.searchParams.get('q')||'').trim().slice(0,100);
    const catParam=url.searchParams.get('category')?.trim()||'';
    const catId=catParam?Number(catParam):null;
+   const catTree = await loadCategoryTree();
+   const catPathMap = new Map<number, string>();
+   for (const c of catTree) catPathMap.set(c.id, c.fullPath);
    const conditions:string[]=[];
    const args:(string|number)[]=[];
    if(q){
@@ -301,8 +322,10 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
    }
    if(catParam){
      if(Number.isSafeInteger(catId)&&catId!>0){
-       conditions.push('p.category_id=?');
-       args.push(catId!);
+       const subtreeIds=getDescendantCategoryIds(catTree,catId!);
+       const placeholders=subtreeIds.map(()=>'?').join(',');
+       conditions.push(`p.category_id IN (${placeholders})`);
+       args.push(...subtreeIds);
      }else{
        conditions.push('LOWER(c.name)=LOWER(?)');
        args.push(catParam);
@@ -348,6 +371,7 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
        const imgInfo = imagesByProdId[pid];
        return {
          ...r,
+         categoryPath: catPathMap.get(Number(r.categoryId)) || String(r.category),
          image: cloudUrl(imgInfo?.publicId || '', imgInfo?.version || '1', 300),
          imageCount: imgInfo ? imgInfo.count : 0
        };
@@ -357,28 +381,50 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
      limit
    }, { headers: { 'Cache-Control': 'no-store' } });
  }
- if(segments[0]==='admin'&&segments[1]==='categories'&&method==='GET'){const r=await db().execute('SELECT c.id,c.name,COUNT(p.id) productCount FROM categories c LEFT JOIN products p ON p.category_id=c.id GROUP BY c.id ORDER BY c.name');return NextResponse.json({categories:r.rows},{headers:{'Cache-Control':'no-store'}})}
+ if(segments[0]==='admin'&&segments[1]==='categories'&&method==='GET'){
+   const tree = await loadCategoryTree();
+   return NextResponse.json({categories:tree},{headers:{'Cache-Control':'no-store'}});
+ }
  if(segments[0]==='admin'&&segments[1]==='categories'&&segments.length===2&&method==='POST'){
   if(!await csrf(req))return jsonError('Invalid request origin.',403);
-  const parsed=z.object({name:z.string().trim().min(1).max(100)}).safeParse(await bodyJson(req));
+  const parsed=z.object({name:z.string().trim().min(1).max(100),parentId:z.number().int().positive().nullable().optional()}).safeParse(await bodyJson(req));
   if(!parsed.success)return jsonError('Please enter a valid category name (1-100 characters).');
   const catName=parsed.data.name;
-  const existing=await db().execute({sql:'SELECT id,name FROM categories WHERE LOWER(name)=LOWER(?)',args:[catName]});
+  const parentId=parsed.data.parentId??null;
+  const tree=await loadCategoryTree();
+  let newLevel:1|2|3=1;
+  let prefix='';
+  if(parentId!==null){
+   const parentNode=tree.find(c=>c.id===parentId);
+   if(!parentNode)return jsonError('Parent category not found.',404);
+   if(parentNode.level>=3)return jsonError('Maximum 3 category levels allowed (Category → Sub Category → Sub-Sub Category).',400);
+   newLevel=(parentNode.level+1) as 2|3;
+   prefix=parentNode.fullPath;
+  }
+  const existing=await db().execute({sql:'SELECT id,name FROM categories WHERE LOWER(name)=LOWER(?) AND COALESCE(parent_id,0)=COALESCE(?,0)',args:[catName,parentId]});
   if(existing.rows.length){
    return NextResponse.json({
-    error:`A category named "${existing.rows[0]?.name}" already exists.`,
-    existingCategory:{id:Number(existing.rows[0]?.id),name:String(existing.rows[0]?.name)}
+    error:`A category named "${existing.rows[0]?.name}" already exists at this level.`,
+    existingCategory:{id:Number(existing.rows[0]?.id),name:String(existing.rows[0]?.name),parentId}
    },{status:409});
   }
   try{
-   const r=await db().execute({sql:'INSERT INTO categories(name) VALUES(?) RETURNING id,name',args:[catName]});
+   const r=await db().execute({sql:'INSERT INTO categories(name,parent_id) VALUES(?,?) RETURNING id,name,parent_id',args:[catName,parentId]});
    const created=r.rows[0];
-   const catObj={id:Number(created!.id),name:String(created!.name),productCount:0};
-   await log(a.id,'category_created','category',catObj.id,{name:catName});
+   const catObj: CategoryTreeNode = {
+    id:Number(created!.id),
+    name:String(created!.name),
+    parentId:created!.parent_id?Number(created!.parent_id):null,
+    level:newLevel,
+    fullPath:prefix?`${prefix} › ${String(created!.name)}`:String(created!.name),
+    directProductCount:0,
+    productCount:0
+   };
+   await log(a.id,'category_created','category',catObj.id,{name:catName,parentId});
     invalidateCategories();
    return NextResponse.json({ok:true,category:catObj},{status:201});
   }catch{
-   return jsonError('Could not save category.',400);
+   return jsonError('Could not save category. Make sure the name is unique.',409);
   }
  }
  if(segments[0]==='admin'&&segments[1]==='categories'&&segments[2]&&method==='PUT'){
@@ -388,42 +434,61 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
   const parsed=z.object({name:z.string().trim().min(1).max(100)}).safeParse(await bodyJson(req));
   if(!parsed.success)return jsonError('Please enter a valid category name (1-100 characters).');
   const catName=parsed.data.name;
-  const existing=await db().execute({sql:'SELECT id FROM categories WHERE LOWER(name)=LOWER(?) AND id!=?',args:[catName,id]});
+  const currentRow=await db().execute({sql:'SELECT id,parent_id FROM categories WHERE id=?',args:[id]});
+  if(!currentRow.rows.length)return jsonError('Category not found.',404);
+  const parentId=currentRow.rows[0]!.parent_id?Number(currentRow.rows[0]!.parent_id):null;
+  const existing=await db().execute({sql:'SELECT id FROM categories WHERE LOWER(name)=LOWER(?) AND COALESCE(parent_id,0)=COALESCE(?,0) AND id!=?',args:[catName,parentId,id]});
   if(existing.rows.length){
-   return jsonError(`A category named "${catName}" already exists.`,409);
+   return jsonError(`A category named "${catName}" already exists at this level.`,409);
   }
-  const r=await db().execute({sql:'UPDATE categories SET name=? WHERE id=? RETURNING id,name',args:[catName,id]});
-  if(!r.rows.length)return jsonError('Category not found.',404);
-  await log(a.id,'category_updated','category',id,{name:catName});
-  invalidateCategories();
-  invalidateProducts();
-  return NextResponse.json({ok:true,category:{id,name:catName}});
+  try{
+   const r=await db().execute({sql:'UPDATE categories SET name=? WHERE id=? RETURNING id,name',args:[catName,id]});
+   if(!r.rows.length)return jsonError('Category not found.',404);
+   await log(a.id,'category_updated','category',id,{name:catName});
+   invalidateCategories();
+   invalidateProducts();
+   return NextResponse.json({ok:true,category:{id,name:catName}});
+  }catch{
+   return jsonError('Could not rename category. Name may already exist.',409);
+  }
  }
  if(segments[0]==='admin'&&segments[1]==='categories'&&segments[2]&&method==='DELETE'){
   if(!await csrf(req))return jsonError('Invalid request origin.',403);
   const id=Number(segments[2]);
   if(!Number.isSafeInteger(id)||id<1)return jsonError('Invalid category ID.',400);
-  const countRow=await db().execute({sql:'SELECT COUNT(*) n FROM products WHERE category_id=?',args:[id]});
+  const tree=await loadCategoryTree();
+  const targetNode=tree.find(c=>c.id===id);
+  if(!targetNode)return jsonError('Category not found.',404);
+  const subtreeIds=getDescendantCategoryIds(tree,id);
+  // Order bottom-up (level 3 -> level 2 -> level 1) to satisfy parent_id FK on deletion
+  const subtreeBottomUp=tree.filter(c=>subtreeIds.includes(c.id)).sort((x,y)=>y.level-x.level).map(c=>c.id);
+  const placeholders=subtreeIds.map(()=>'?').join(',');
+  const countRow=await db().execute({sql:`SELECT COUNT(*) n FROM products WHERE category_id IN (${placeholders})`,args:subtreeIds});
   const prodCount=Number(countRow.rows[0]?.n||0);
+  const childCount=subtreeIds.length-1;
   const url=new URL(req.url);
   const body=await bodyJson(req);
   const action=(body?.action||url.searchParams.get('action')||'').toLowerCase();
   const targetCatId=Number(body?.targetCategoryId||url.searchParams.get('targetCategoryId'))||null;
 
-  if(prodCount>0&&!action){
-   return jsonError(`Category contains ${prodCount} product(s). Choose to merge or delete all.`,409);
+  if((prodCount>0||childCount>0)&&!action){
+   return jsonError(`Category contains ${prodCount} product(s)${childCount>0?` and ${childCount} sub-category(ies)`:''}. Choose to merge or delete all.`,409);
   }
 
   if(action==='merge'){
-   if(!targetCatId||targetCatId===id)return jsonError('Please select a valid destination category.',400);
+   if(!targetCatId||subtreeIds.includes(targetCatId))return jsonError('Please select a valid destination category outside this category tree.',400);
    const targetCat=await db().execute({sql:'SELECT id FROM categories WHERE id=?',args:[targetCatId]});
    if(!targetCat.rows.length)return jsonError('Target category not found.',404);
    const tx=await db().transaction('write');
    try{
-    await tx.execute({sql:'UPDATE products SET category_id=? WHERE category_id=?',args:[targetCatId,id]});
-    await tx.execute({sql:'DELETE FROM categories WHERE id=?',args:[id]});
+    if(prodCount>0){
+     await tx.execute({sql:`UPDATE products SET category_id=? WHERE category_id IN (${placeholders})`,args:[targetCatId,...subtreeIds]});
+    }
+    for(const cid of subtreeBottomUp){
+     await tx.execute({sql:'DELETE FROM categories WHERE id=?',args:[cid]});
+    }
     await tx.commit();
-    await log(a.id,'category_merged_and_deleted','category',id,{targetCategoryId:targetCatId,mergedCount:prodCount});
+    await log(a.id,'category_merged_and_deleted','category',id,{targetCategoryId:targetCatId,mergedCount:prodCount,deletedSubcategories:childCount});
      invalidateCategories();
      invalidateProducts();
     return NextResponse.json({ok:true,mergedCount:prodCount});
@@ -435,14 +500,16 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
   }
 
   if(action==='deleteall'||action==='delete_all'){
-   const imgs=await db().execute({sql:'SELECT i.public_id FROM product_images i JOIN products p ON p.id=i.product_id WHERE p.category_id=?',args:[id]});
+   const imgs=await db().execute({sql:`SELECT i.public_id FROM product_images i JOIN products p ON p.id=i.product_id WHERE p.category_id IN (${placeholders})`,args:subtreeIds});
    const tx=await db().transaction('write');
    try{
-    await tx.execute({sql:'DELETE FROM product_images WHERE product_id IN (SELECT id FROM products WHERE category_id=?)',args:[id]});
-    await tx.execute({sql:'DELETE FROM products WHERE category_id=?',args:[id]});
-    await tx.execute({sql:'DELETE FROM categories WHERE id=?',args:[id]});
+    await tx.execute({sql:`DELETE FROM product_images WHERE product_id IN (SELECT id FROM products WHERE category_id IN (${placeholders}))`,args:subtreeIds});
+    await tx.execute({sql:`DELETE FROM products WHERE category_id IN (${placeholders})`,args:subtreeIds});
+    for(const cid of subtreeBottomUp){
+     await tx.execute({sql:'DELETE FROM categories WHERE id=?',args:[cid]});
+    }
     await tx.commit();
-    await log(a.id,'category_and_products_deleted','category',id,{deletedCount:prodCount});
+    await log(a.id,'category_and_products_deleted','category',id,{deletedCount:prodCount,deletedSubcategories:childCount});
      invalidateCategories();
      invalidateProducts();
     if(imgs.rows.length){
@@ -456,7 +523,7 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
    }
   }
 
-  if(prodCount>0)return jsonError('Category contains products. Move or delete them first.',409);
+  if(prodCount>0||childCount>0)return jsonError('Category contains products or sub-categories. Move or delete them first.',409);
   const r=await db().execute({sql:'DELETE FROM categories WHERE id=? RETURNING id',args:[id]});
   if(!r.rows.length)return jsonError('Category not found.',404);
   await log(a.id,'category_deleted','category',id);
@@ -465,13 +532,13 @@ async function adminRoute(req:Request,segments:string[]){await ensureSchema();co
   return NextResponse.json({ok:true});
  }
  if(segments[0]==='admin'&&segments[1]==='products'&&method==='POST'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const parsed=productSchema.safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Please check the product details.');const d=parsed.data;if(!await verifyOwnedAssets(d.images,a.id))return jsonError('One or more images could not be verified.',400);const tx=await db().transaction('write');try{const r=await tx.execute({sql:'INSERT INTO products(name,description,price,category_id) VALUES(?,?,?,?) RETURNING id',args:[d.name,d.description,d.price,d.categoryId]});const id=Number(r.rows[0]!.id);for(let i=0;i<d.images.length;i++)await tx.execute({sql:'INSERT INTO product_images(product_id,public_id,version,sort_order) VALUES(?,?,?,?)',args:[id,d.images[i]!.publicId,d.images[i]!.version,i]});for(const im of d.images)await tx.execute({sql:'UPDATE uploaded_assets SET claimed=1 WHERE public_id=? AND admin_id=?',args:[im.publicId,a.id]});await tx.commit();await log(a.id,'product_created','product',id);invalidateProducts();return NextResponse.json({id},{status:201})}catch{await tx.rollback();return jsonError('Could not save the product.',400)}
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const parsed=productSchema.safeParse(await bodyJson(req));if(!parsed.success)return jsonError('Please check the product details.');const d=parsed.data;if(!await verifyOwnedAssets(d.images,a.id))return jsonError('One or more images could not be verified.',400);const tx=await db().transaction('write');try{const r=await tx.execute({sql:'INSERT INTO products(name,description,price,category_id) VALUES(?,?,?,?) RETURNING id',args:[d.name,d.description,d.price,d.categoryId]});const id=Number(r.rows[0]!.id);for(let i=0;i<d.images.length;i++)await tx.execute({sql:'INSERT INTO product_images(product_id,public_id,version,sort_order) VALUES(?,?,?,?)',args:[id,d.images[i]!.publicId,d.images[i]!.version,i]});for(const im of d.images)await tx.execute({sql:'UPDATE uploaded_assets SET claimed=1 WHERE public_id=? AND admin_id=?',args:[im.publicId,a.id]});await tx.commit();await log(a.id,'product_created','product',id);invalidateCategories();invalidateProducts();return NextResponse.json({id},{status:201})}catch{await tx.rollback();return jsonError('Could not save the product.',400)}
  }
  if(segments[0]==='admin'&&segments[1]==='products'&&segments[2]&&method==='PUT'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),parsed=productSchema.safeParse(await bodyJson(req));if(!Number.isSafeInteger(id)||!parsed.success)return jsonError('Please check the product details.');const d=parsed.data;if(!await verifyOwnedAssets(d.images,a.id,id))return jsonError('One or more images could not be verified.',400);const product=await db().execute({sql:'SELECT id FROM products WHERE id=?',args:[id]});if(!product.rows.length)return jsonError('Product not found.',404);const old=await db().execute({sql:'SELECT public_id FROM product_images WHERE product_id=?',args:[id]});const tx=await db().transaction('write');try{await tx.execute({sql:'UPDATE products SET name=?,description=?,price=?,category_id=? WHERE id=?',args:[d.name,d.description,d.price,d.categoryId,id]});await tx.execute({sql:'DELETE FROM product_images WHERE product_id=?',args:[id]});for(let i=0;i<d.images.length;i++){await tx.execute({sql:'INSERT INTO product_images(product_id,public_id,version,sort_order) VALUES(?,?,?,?)',args:[id,d.images[i]!.publicId,d.images[i]!.version,i]});await tx.execute({sql:'UPDATE uploaded_assets SET claimed=1 WHERE public_id=? AND admin_id=?',args:[d.images[i]!.publicId,a.id]})}await tx.commit();await log(a.id,'product_updated','product',id);invalidateProducts()}catch{await tx.rollback();return jsonError('Could not update the product.',400)}await destroyAssets(old.rows.map(r=>String(r.public_id)).filter(id=>!d.images.some(i=>i.publicId===id)));return NextResponse.json({ok:true})
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),parsed=productSchema.safeParse(await bodyJson(req));if(!Number.isSafeInteger(id)||!parsed.success)return jsonError('Please check the product details.');const d=parsed.data;if(!await verifyOwnedAssets(d.images,a.id,id))return jsonError('One or more images could not be verified.',400);const product=await db().execute({sql:'SELECT id FROM products WHERE id=?',args:[id]});if(!product.rows.length)return jsonError('Product not found.',404);const old=await db().execute({sql:'SELECT public_id FROM product_images WHERE product_id=?',args:[id]});const tx=await db().transaction('write');try{await tx.execute({sql:'UPDATE products SET name=?,description=?,price=?,category_id=? WHERE id=?',args:[d.name,d.description,d.price,d.categoryId,id]});await tx.execute({sql:'DELETE FROM product_images WHERE product_id=?',args:[id]});for(let i=0;i<d.images.length;i++){await tx.execute({sql:'INSERT INTO product_images(product_id,public_id,version,sort_order) VALUES(?,?,?,?)',args:[id,d.images[i]!.publicId,d.images[i]!.version,i]});await tx.execute({sql:'UPDATE uploaded_assets SET claimed=1 WHERE public_id=? AND admin_id=?',args:[d.images[i]!.publicId,a.id]})}await tx.commit();await log(a.id,'product_updated','product',id);invalidateCategories();invalidateProducts()}catch{await tx.rollback();return jsonError('Could not update the product.',400)}await destroyAssets(old.rows.map(r=>String(r.public_id)).filter(id=>!d.images.some(i=>i.publicId===id)));return NextResponse.json({ok:true})
  }
  if(segments[0]==='admin'&&segments[1]==='products'&&segments[2]&&method==='DELETE'){
-  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),old=await db().execute({sql:'SELECT public_id FROM product_images WHERE product_id=?',args:[id]});const r=await db().execute({sql:'DELETE FROM products WHERE id=? RETURNING id',args:[id]});if(!r.rows.length)return jsonError('Product not found.',404);await log(a.id,'product_deleted','product',id);invalidateProducts();await destroyAssets(old.rows.map(x=>String(x.public_id)));return NextResponse.json({ok:true})
+  if(!await csrf(req))return jsonError('Invalid request origin.',403);const id=Number(segments[2]),old=await db().execute({sql:'SELECT public_id FROM product_images WHERE product_id=?',args:[id]});const r=await db().execute({sql:'DELETE FROM products WHERE id=? RETURNING id',args:[id]});if(!r.rows.length)return jsonError('Product not found.',404);await log(a.id,'product_deleted','product',id);invalidateCategories();invalidateProducts();await destroyAssets(old.rows.map(x=>String(x.public_id)));return NextResponse.json({ok:true})
  }
  if(segments[0]==='admin'&&segments[1]==='settings'&&method==='GET'){const r=await db().execute({sql:'SELECT value FROM app_settings WHERE key=?',args:['whatsapp']});return NextResponse.json({whatsapp:r.rows[0]?.value||''},{headers:{'Cache-Control':'no-store'}})}
  if(segments[0]==='admin'&&segments[1]==='settings'&&method==='PUT'){
