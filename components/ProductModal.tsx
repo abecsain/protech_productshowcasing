@@ -18,6 +18,7 @@ interface ProductModalProps {
     price?: number | null;
     category?: string;
     image: string;
+    imageCount?: number;
   };
   canSeePrices: boolean;
   onClose: () => void;
@@ -32,14 +33,26 @@ interface FullProduct {
   images: string[];
 }
 
+const productDetailCache = new Map<string, { data: FullProduct; ts: number }>();
+const DETAIL_CACHE_TTL_MS = 30_000;
+
 export default function ProductModal({
   productId,
   initialData,
   canSeePrices,
   onClose,
 }: ProductModalProps) {
-  const [product, setProduct] = useState<FullProduct | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `${productId}:${canSeePrices ? 1 : 0}`;
+  const cachedEntry = productDetailCache.get(cacheKey);
+  const initialHit = cachedEntry && Date.now() - cachedEntry.ts < DETAIL_CACHE_TTL_MS ? cachedEntry.data : null;
+
+  const hasCompleteInitial =
+    Boolean(initialData) &&
+    (initialData?.imageCount ?? 0) <= 1 &&
+    (!canSeePrices || typeof initialData?.price === 'number');
+
+  const [product, setProduct] = useState<FullProduct | null>(initialHit);
+  const [loading, setLoading] = useState(!initialHit && !hasCompleteInitial);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const { items, addItem, updateQuantity, removeItem } = useCart();
@@ -49,13 +62,24 @@ export default function ProductModal({
   const inCartQty = cartItem ? cartItem.quantity : 0;
 
   useEffect(() => {
+    const entry = productDetailCache.get(cacheKey);
+    if (entry && Date.now() - entry.ts < DETAIL_CACHE_TTL_MS) {
+      setProduct(entry.data);
+      setLoading(false);
+      return;
+    }
+    if (hasCompleteInitial) {
+      return;
+    }
+
     let ignore = false;
     async function load() {
       try {
-        const res = await fetch(`/api/products/${productId}`, { cache: 'no-store' });
+        const res = await fetch(`/api/products/${productId}`);
         if (res.ok) {
           const data = await res.json();
           if (!ignore && data.product) {
+            productDetailCache.set(cacheKey, { data: data.product, ts: Date.now() });
             setProduct(data.product);
           }
         }
@@ -69,7 +93,7 @@ export default function ProductModal({
     return () => {
       ignore = true;
     };
-  }, [productId, canSeePrices]);
+  }, [productId, canSeePrices, cacheKey, hasCompleteInitial]);
 
   const images = product?.images?.length
     ? product.images

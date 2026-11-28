@@ -287,10 +287,13 @@ export default function AdminProductsClient({
     }
   }, []);
 
-  // Keep categories & products synced with DB on mount and window focus
+  // Keep categories & products synced with DB when returning to tab after >= 30s
+  const lastFocusSyncRef = useRef<number>(Date.now());
   useEffect(() => {
-    loadCategories();
     const handleFocus = () => {
+      const now = Date.now();
+      if (now - lastFocusSyncRef.current < 30_000) return;
+      lastFocusSyncRef.current = now;
       loadCategories();
       loadProducts();
     };
@@ -590,6 +593,8 @@ export default function AdminProductsClient({
     });
     setViewingActiveImageIndex(0);
 
+    if ((prod.imageCount ?? 0) <= 1) return;
+
     try {
       const res = await fetch(`/api/admin/products/${prod.id}`);
       if (res.ok) {
@@ -625,12 +630,19 @@ export default function AdminProductsClient({
     setFormDesc(prod.description);
     setFormPrice(String(prod.price));
     setFormCategoryId(prod.categoryId);
+    setFormImages(
+      prod.image && prod.image !== '/product-placeholder.svg'
+        ? [{ publicId: prod.image, version: '1', previewUrl: prod.image }]
+        : []
+    );
     setFormError('');
     setShowInlineNewCategory(false);
     setInlineParentCategoryId(null);
     setInlineCategoryName('');
     setInlineCategoryError('');
     setShowProductModal(true);
+
+    if ((prod.imageCount ?? 0) === 0) return;
 
     try {
       const res = await fetch(`/api/admin/products/${prod.id}`);

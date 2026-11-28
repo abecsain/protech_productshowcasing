@@ -2,14 +2,12 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import dynamic from 'next/dynamic';
 import { Plus } from 'lucide-react';
 import QuantityStepper from './ui/QuantityStepper';
 import Button from './ui/Button';
 import { useCart } from './CartContext';
 import { useToast } from './ui/Toast';
-
-const ProductModal = dynamic(() => import('./ProductModal'), { ssr: false });
+import ProductModal from './ProductModal';
 
 export interface ProductItem {
   id: number;

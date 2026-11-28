@@ -16,6 +16,19 @@ export interface CatalogProduct {
 
 export type CatalogCategory = CategoryTreeNode;
 
+const CACHE_TTL_MS = 30_000;
+const globalCatalogCache = globalThis as unknown as {
+  __pte_categories?: { data: CatalogCategory[]; ts: number };
+  __pte_featured?: { data: CatalogProduct[]; ts: number };
+  __pte_pages?: Map<string, { data: { products: CatalogProduct[]; total: number; page: number; limit: number }; ts: number }>;
+};
+
+export function clearCatalogMemoryCache() {
+  globalCatalogCache.__pte_categories = undefined;
+  globalCatalogCache.__pte_featured = undefined;
+  globalCatalogCache.__pte_pages?.clear();
+}
+
 export function cloudUrl(publicId: string, version: string, width = 300) {
   if (!publicId) return '/product-placeholder.svg';
   if (publicId.startsWith('/api/images/')) return publicId;
@@ -38,11 +51,17 @@ export function cloudUrl(publicId: string, version: string, width = 300) {
  * Get category list directly from DB (3-level tree) so storefront and admin always stay in sync
  */
 export async function getCachedCategories(): Promise<CatalogCategory[]> {
+  const now = Date.now();
+  const cached = globalCatalogCache.__pte_categories;
+  if (cached && now - cached.ts < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
   await ensureSchema();
   const r = await db().execute(
     'SELECT c.id, c.name, c.parent_id AS parentId, COUNT(p.id) AS productCount FROM categories c LEFT JOIN products p ON p.category_id=c.id GROUP BY c.id ORDER BY c.name'
   );
-  return buildCategoryTreeList(
+  const tree = buildCategoryTreeList(
     r.rows.map((row) => ({
       id: Number(row.id),
       name: String(row.name),
@@ -50,6 +69,8 @@ export async function getCachedCategories(): Promise<CatalogCategory[]> {
       directProductCount: Number(row.productCount || 0),
     }))
   );
+  globalCatalogCache.__pte_categories = { data: tree, ts: Date.now() };
+  return tree;
 }
 
 /**
@@ -57,6 +78,12 @@ export async function getCachedCategories(): Promise<CatalogCategory[]> {
  * GUARANTEED: Absolutely NO price column selected or returned!
  */
 export async function getCachedFeaturedProducts(): Promise<CatalogProduct[]> {
+  const now = Date.now();
+  const cached = globalCatalogCache.__pte_featured;
+  if (cached && now - cached.ts < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
   await ensureSchema();
   const prodsRes = await db().execute({
     sql: `SELECT p.id, p.name, p.description, c.name AS category, c.id AS categoryId, p.created_at AS createdAt
@@ -91,7 +118,7 @@ export async function getCachedFeaturedProducts(): Promise<CatalogProduct[]> {
     }
   }
 
-  return prods.map((r) => {
+  const featured = prods.map((r) => {
     const pid = Number(r.id);
     const imgInfo = imagesByProdId[pid];
     return {
@@ -105,6 +132,8 @@ export async function getCachedFeaturedProducts(): Promise<CatalogProduct[]> {
       imageCount: imgInfo ? imgInfo.count : 0,
     };
   });
+  globalCatalogCache.__pte_featured = { data: featured, ts: Date.now() };
+  return featured;
 }
 
 /**
@@ -122,12 +151,21 @@ export async function getCachedProductsPage({
   category?: number | null;
   q?: string;
 }): Promise<{ products: CatalogProduct[]; total: number; page: number; limit: number }> {
-  await ensureSchema();
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(24, Math.max(1, limit));
   const offset = (safePage - 1) * safeLimit;
   const cleanQ = q.trim().slice(0, 100);
   const catId = category && Number.isSafeInteger(category) ? category : null;
+
+  const cacheKey = `${safePage}|${safeLimit}|${catId ?? ''}|${cleanQ}`;
+  const now = Date.now();
+  const pagesMap = (globalCatalogCache.__pte_pages ??= new Map());
+  const cachedPage = pagesMap.get(cacheKey);
+  if (cachedPage && now - cachedPage.ts < CACHE_TTL_MS) {
+    return cachedPage.data;
+  }
+
+  await ensureSchema();
 
   const allCategories = await getCachedCategories();
   const catPathMap = new Map<number, string>();
@@ -204,13 +242,20 @@ export async function getCachedProductsPage({
     };
   });
 
-  return { products, total, page: safePage, limit: safeLimit };
+  const result = { products, total, page: safePage, limit: safeLimit };
+  if (pagesMap.size >= 40) {
+    const firstKey = pagesMap.keys().next().value;
+    if (firstKey !== undefined) pagesMap.delete(firstKey);
+  }
+  pagesMap.set(cacheKey, { data: result, ts: Date.now() });
+  return result;
 }
 
 /**
  * Invalidation triggers for admin mutations
  */
 export function revalidateCatalog() {
+  clearCatalogMemoryCache();
   try {
     revalidateTag('catalog-products', { expire: 0 });
     revalidateTag('catalog-categories', { expire: 0 });

@@ -32,16 +32,24 @@ function allowMem(bucket: string, limit = 5, windowSec = 60) {
 
 let cachedCategories: CategoryTreeNode[] | null = null;
 let cachedCategoriesTime = 0;
+const API_CACHE_TTL_MS = 30_000;
 function invalidateCategories() {
   revalidateCatalog(); cachedCategories = null; cachedCategoriesTime = 0; }
 async function loadCategoryTree(): Promise<CategoryTreeNode[]> {
+  const now = Date.now();
+  if (cachedCategories && now - cachedCategoriesTime < API_CACHE_TTL_MS) {
+    return cachedCategories;
+  }
   const r = await db().execute('SELECT c.id, c.name, c.parent_id AS parentId, COUNT(p.id) AS productCount FROM categories c LEFT JOIN products p ON p.category_id=c.id GROUP BY c.id ORDER BY c.name');
-  return buildCategoryTreeList(r.rows.map((row) => ({
+  const tree = buildCategoryTreeList(r.rows.map((row) => ({
     id: Number(row.id),
     name: String(row.name),
     parentId: row.parentId ? Number(row.parentId) : null,
     directProductCount: Number(row.productCount || 0),
   })));
+  cachedCategories = tree;
+  cachedCategoriesTime = Date.now();
+  return tree;
 }
 
 let cachedSettings: { whatsapp: string } | null = null;
@@ -58,6 +66,7 @@ let cachedFirstCatalogNoPrice: any[] | null = null;
 let cachedFirstCatalogWithPrice: any[] | null = null;
 let cachedFirstCatalogNoPriceTime = 0;
 let cachedFirstCatalogWithPriceTime = 0;
+const cachedProductDetail = new Map<string, { data: any; ts: number }>();
 function invalidateProducts() {
   revalidateCatalog();
   cachedTotalCount = null;
@@ -70,6 +79,7 @@ function invalidateProducts() {
   cachedFirstCatalogWithPrice = null;
   cachedFirstCatalogNoPriceTime = 0;
   cachedFirstCatalogWithPriceTime = 0;
+  cachedProductDetail.clear();
 }
 
 async function bodyJson(req:Request){try{return await req.json()}catch{return null}}
@@ -139,6 +149,23 @@ async function userRoute(req:Request,segments:string[]){
     const q = (url.searchParams.get('q') || '').trim().slice(0, 100);
     const cat = Number(url.searchParams.get('category')) || null;
     if (q && !await allow(`search:${ip(req)}`, 60)) return jsonError('Search limit reached. Try again shortly.', 429);
+
+    const now = Date.now();
+    if (!q && !cat && page === 1 && cachedTotalCount !== null && now - cachedTotalCountTime < API_CACHE_TTL_MS) {
+      if (limit === 12) {
+        const hit = p.canSeePrices ? cachedHomeFeaturedWithPrice : cachedHomeFeaturedNoPrice;
+        const hitTime = p.canSeePrices ? cachedHomeFeaturedWithPriceTime : cachedHomeFeaturedNoPriceTime;
+        if (hit && now - hitTime < API_CACHE_TTL_MS) {
+          return NextResponse.json({ products: hit, page, limit, total: cachedTotalCount, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, no-store' } });
+        }
+      } else if (limit === 24) {
+        const hit = p.canSeePrices ? cachedFirstCatalogWithPrice : cachedFirstCatalogNoPrice;
+        const hitTime = p.canSeePrices ? cachedFirstCatalogWithPriceTime : cachedFirstCatalogNoPriceTime;
+        if (hit && now - hitTime < API_CACHE_TTL_MS) {
+          return NextResponse.json({ products: hit, page, limit, total: cachedTotalCount, canSeePrices: p.canSeePrices }, { headers: { 'Cache-Control': 'private, no-store' } });
+        }
+      }
+    }
 
     const catTree = await loadCategoryTree();
     const catPathMap = new Map<number, string>();
@@ -220,6 +247,8 @@ async function userRoute(req:Request,segments:string[]){
     });
 
     if (!q && !cat && page === 1) {
+      cachedTotalCount = total;
+      cachedTotalCountTime = Date.now();
       if (limit === 12) {
         if (p.canSeePrices) {
           cachedHomeFeaturedWithPrice = items;
@@ -247,7 +276,7 @@ async function userRoute(req:Request,segments:string[]){
       canSeePrices: p.canSeePrices,
     }, { headers: { 'Cache-Control': 'private, no-store' } });
  }
- if(segments[0]==='products'&&segments[1]&&method==='GET'){const id=Number(segments[1]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Product not found.',404);const price=p.canSeePrices?'p.price,':'';const [r,imgs]=await Promise.all([db().execute({sql:`SELECT p.id,p.name,p.description,${price}c.name AS category,c.id AS categoryId FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=?`,args:[id]}),db().execute({sql:'SELECT public_id,version FROM product_images WHERE product_id=? ORDER BY sort_order',args:[id]})]);if(!r.rows.length)return jsonError('Product not found.',404);return NextResponse.json({product:{...r.rows[0],images:imgs.rows.map(i=>cloudUrl(String(i.public_id),String(i.version),800))}},{headers:{'Cache-Control':'private, no-store'}})}
+ if(segments[0]==='products'&&segments[1]&&method==='GET'){const id=Number(segments[1]);if(!Number.isSafeInteger(id)||id<1)return jsonError('Product not found.',404);const cacheKey=`${id}:${p.canSeePrices?1:0}`;const cached=cachedProductDetail.get(cacheKey);if(cached&&Date.now()-cached.ts<API_CACHE_TTL_MS){return NextResponse.json({product:cached.data},{headers:{'Cache-Control':'private, no-store'}})}const price=p.canSeePrices?'p.price,':'';const [r,imgs]=await Promise.all([db().execute({sql:`SELECT p.id,p.name,p.description,${price}c.name AS category,c.id AS categoryId FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id=?`,args:[id]}),db().execute({sql:'SELECT public_id,version FROM product_images WHERE product_id=? ORDER BY sort_order',args:[id]})]);if(!r.rows.length)return jsonError('Product not found.',404);const prodData={...r.rows[0],images:imgs.rows.map(i=>cloudUrl(String(i.public_id),String(i.version),800))};cachedProductDetail.set(cacheKey,{data:prodData,ts:Date.now()});return NextResponse.json({product:prodData},{headers:{'Cache-Control':'private, no-store'}})}
  return jsonError('Not found.',404)
 }
 
